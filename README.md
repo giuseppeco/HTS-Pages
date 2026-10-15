@@ -1,8 +1,10 @@
 # HTS Pages
 
-WordPress plugin v0.3.0 — spreadsheet-like page property editing in **WP Admin → HTS Pages**.
+WordPress plugin v0.4.0 — spreadsheet-like page property editing in **WP Admin → HTS Pages**.
 
 ## Features
+- **Interactive Dependencies view**: select **View graph** on a page to inspect incoming references, the selected object, and outgoing links in a three-column layout. Click an object to navigate its own dependencies, with Back navigation and a direct view link. Read-only and permission-checked via authenticated AJAX.
+
 - **Incoming / outgoing internal links**: clickable lists of source and target posts, pages, and public custom post types, shown per page. Scan HTML hyperlinks stored in post_content, index cached 15 minutes and automatically invalidated when posts are saved or deleted. Shows the number of scanned objects and warns when the 3,000-object limit is hit.
 
 - **Page thumbnail**: a miniature live rendering of each page (lazy-loaded iframe). Click it to open a large live preview dialog; use the dialog link to open the page in a new tab.
@@ -14,7 +16,7 @@ WordPress plugin v0.3.0 — spreadsheet-like page property editing in **WP Admin
 - AJAX nonce, user capabilities, field validation, optimistic comparisons, no Gutenberg content mutation.
 
 ## Limits & safeguards
-System/secret/serialized metadata is deliberately not exposed. Arbitrary internal keys cannot be edited. Language changes may affect Polylang associations. Dates must be entered as `YYYY-MM-DD HH:MM:SS`; taxonomy values use existing slugs separated by commas. Each save is immediate, including status changes on live pages; review carefully. No bulk changes in v0.3.0. The WordPress post content and filtered content fields are never requested or updated.
+System/secret/serialized metadata is deliberately not exposed. Arbitrary internal keys cannot be edited. Language changes may affect Polylang associations. Dates must be entered as `YYYY-MM-DD HH:MM:SS`; taxonomy values use existing slugs separated by commas. Each save is immediate, including status changes on live pages; review carefully. No bulk changes in v0.4.0. The WordPress post content and filtered content fields are never requested or updated.
 
 ## Install
 Download the GitHub repository ZIP, then in WordPress go to Plugins → Add New → Upload Plugin. The plugin header is at the archive root (`hts-pages.php`). Activate **HTS Pages**. Alternatively copy `hts-pages.php` into `wp-content/plugins/hts-pages/hts-pages.php`. WordPress 6.4+ and PHP 8.0+ recommended.
