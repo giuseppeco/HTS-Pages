@@ -2,33 +2,70 @@
 /**
  * Plugin Name: HTS Pages
  * Description: Spreadsheet-style management of WordPress page properties without opening Gutenberg.
- * Version: 0.2.0
+ * Version: 0.3.0
  * Author: HiTechStories
  * Text Domain: hts-pages
  */
 if (!defined('ABSPATH')) exit;
 final class HTS_Pages {
- const VERSION='0.2.0';
+ const VERSION='0.3.0';
  const FIELDS=['post_title'=>'Title','post_name'=>'Slug','post_status'=>'Status','post_author'=>'Author ID','post_date'=>'Publication date','post_date_gmt'=>'Publication date GMT','post_parent'=>'Parent ID','menu_order'=>'Order','post_excerpt'=>'Excerpt','comment_status'=>'Comments','ping_status'=>'Pings','post_password'=>'Password','post_template'=>'Template','thumbnail_id'=>'Featured image ID','language'=>'Polylang language'];
  const SEO=['_yoast_wpseo_title','_yoast_wpseo_metadesc','_yoast_wpseo_focuskw','rank_math_title','rank_math_description','rank_math_focus_keyword'];
  static function init(){
    add_action('admin_menu',[__CLASS__,'menu']);
    add_action('wp_ajax_htsp_list',[__CLASS__,'listing']);
    add_action('wp_ajax_htsp_save',[__CLASS__,'save']);
+   add_action('save_post',[__CLASS__,'clear_link_graph']);
+   add_action('deleted_post',[__CLASS__,'clear_link_graph']);
  }
  static function menu(){ add_menu_page('HTS Pages','HTS Pages','edit_pages','hts-pages',[__CLASS__,'screen'],'dashicons-editor-table',25); }
  static function guard(){ if(!current_user_can('edit_pages')) wp_send_json_error(['message'=>'Permission denied'],403); check_ajax_referer('htsp_nonce','nonce'); }
  static function statuses(){return ['publish','draft','pending','private','future','trash'];}
- static function columns(){ $cols=['preview'=>'Preview','ID'=>'ID','post_title'=>'Title','post_name'=>'Slug','post_status'=>'Status','permalink'=>'URL','post_author'=>'Author ID','post_date'=>'Published (local)','post_date_gmt'=>'Published (GMT)','post_modified'=>'Modified','post_modified_gmt'=>'Modified GMT','post_parent'=>'Parent ID','menu_order'=>'Order','post_excerpt'=>'Excerpt','comment_status'=>'Comments','ping_status'=>'Pings','post_password'=>'Password','post_template'=>'Template','thumbnail_id'=>'Image ID','language'=>'Language','guid'=>'GUID','post_type'=>'Type','post_mime_type'=>'MIME','comment_count'=>'Comments #','to_ping'=>'To ping','pinged'=>'Pinged']; foreach(get_object_taxonomies('page','objects') as $tax){$cols['tax:'.$tax->name]='Taxonomy: '.$tax->label;} return $cols; }
+ static function columns(){ $cols=['preview'=>'Preview','ID'=>'ID','incoming'=>'Incoming links','outgoing'=>'Outgoing links','post_title'=>'Title','post_name'=>'Slug','post_status'=>'Status','permalink'=>'URL','post_author'=>'Author ID','post_date'=>'Published (local)','post_date_gmt'=>'Published (GMT)','post_modified'=>'Modified','post_modified_gmt'=>'Modified GMT','post_parent'=>'Parent ID','menu_order'=>'Order','post_excerpt'=>'Excerpt','comment_status'=>'Comments','ping_status'=>'Pings','post_password'=>'Password','post_template'=>'Template','thumbnail_id'=>'Image ID','language'=>'Language','guid'=>'GUID','post_type'=>'Type','post_mime_type'=>'MIME','comment_count'=>'Comments #','to_ping'=>'To ping','pinged'=>'Pinged']; foreach(get_object_taxonomies('page','objects') as $tax){$cols['tax:'.$tax->name]='Taxonomy: '.$tax->label;} return $cols; }
+ static function link_graph(){
+   // Cache for 15 minutes to avoid scanning the full site on every table interaction.
+   $graph=get_transient('htsp_links_v3');
+   if(is_array($graph))return $graph;
+   $types=get_post_types(['public'=>true],'names');
+   $sources=get_posts(['post_type'=>array_values($types),'post_status'=>['publish','private','draft','pending','future'],'numberposts'=>3000,'orderby'=>'ID','order'=>'DESC','suppress_filters'=>true]);
+   $graph=['incoming'=>[],'outgoing'=>[],'scanned'=>count($sources),'limited'=>count($sources)===3000];
+   $home=wp_parse_url(home_url());$host=strtolower($home['host']??'');
+   foreach($sources as $p){
+     $src=(int)$p->ID;$targets=[];
+     // Extract href URLs without altering content. Handles Gutenberg HTML anchors.
+     if(preg_match_all('~\\bhref\\s*=\\s*["\\\']([^"\\\']+)["\\\']~i',(string)$p->post_content,$matches)){
+       foreach($matches[1] as $href){
+         $href=html_entity_decode($href,ENT_QUOTES,'UTF-8');
+         if(str_starts_with($href,'#')||str_starts_with($href,'mailto:')||str_starts_with($href,'tel:'))continue;
+         $abs=wp_parse_url($href);
+         if(!$abs)continue;
+         if(isset($abs['host'])&&strtolower($abs['host'])!==$host)continue;
+         $url=isset($abs['host'])?$href:home_url('/'.ltrim($href,'/'));
+         $id=(int)url_to_postid($url);
+         if(!$id&&preg_match('~[?&]p(?:age_id)?=(\\d+)~',$href,$m))$id=(int)$m[1];
+         if($id&&$id!==$src)$targets[$id]=true;
+       }
+     }
+     // WordPress parent-child links are structural, not hyperlinks, so not included.
+     foreach(array_keys($targets) as $dest){
+       $title=get_the_title($dest)?:('#'.$dest);
+       $graph['outgoing'][$src][$dest]=['id'=>$dest,'title'=>wp_strip_all_tags($title),'url'=>get_permalink($dest)?:''];
+       $graph['incoming'][$dest][$src]=['id'=>$src,'title'=>wp_strip_all_tags(get_the_title($src)?:('#'.$src)),'url'=>get_permalink($src)?:''];
+     }
+   }
+   set_transient('htsp_links_v3',$graph,15*MINUTE_IN_SECONDS);
+   return $graph;
+ }
+ static function clear_link_graph(){delete_transient('htsp_links_v3');}
  static function listing(){
    self::guard();
    $page=max(1,absint($_POST['page']??1));$size=min(100,max(10,absint($_POST['size']??30)));
    $args=['post_type'=>'page','post_status'=>self::statuses(),'posts_per_page'=>$size,'paged'=>$page,'orderby'=>'ID','order'=>'DESC','s'=>sanitize_text_field(wp_unslash($_POST['search']??''))];
    if(!empty($_POST['status']) && in_array($_POST['status'],self::statuses(),true))$args['post_status']=sanitize_key($_POST['status']);
-   $q=new WP_Query($args);$rows=[];$allMeta=[];
+   $q=new WP_Query($args);$rows=[];$allMeta=[];$graph=self::link_graph();
    foreach($q->posts as $p){
      if(!current_user_can('edit_post',$p->ID))continue;
-     $row=['ID'=>$p->ID,'permalink'=>get_permalink($p),'post_template'=>get_page_template_slug($p->ID)?:'','thumbnail_id'=>get_post_thumbnail_id($p->ID)?:'','language'=>function_exists('pll_get_post_language')?(pll_get_post_language($p->ID,'slug')?:''):''];
+     $row=['incoming'=>array_values($graph['incoming'][$p->ID]??[]),'outgoing'=>array_values($graph['outgoing'][$p->ID]??[]),'ID'=>$p->ID,'permalink'=>get_permalink($p),'post_template'=>get_page_template_slug($p->ID)?:'','thumbnail_id'=>get_post_thumbnail_id($p->ID)?:'','language'=>function_exists('pll_get_post_language')?(pll_get_post_language($p->ID,'slug')?:''):''];
      foreach(['post_title','post_name','post_status','post_author','post_date','post_date_gmt','post_modified','post_modified_gmt','post_parent','menu_order','post_excerpt','comment_status','ping_status','post_password','guid','post_type','post_mime_type','comment_count','to_ping','pinged'] as $field){$row[$field]=$field==='post_password'&&$p->$field!==''?'••••••':$p->$field;}
      foreach(get_object_taxonomies('page','objects') as $tax){$terms=wp_get_object_terms($p->ID,$tax->name,['fields'=>'slugs']);$row['tax:'.$tax->name]=is_wp_error($terms)?'':implode(', ',$terms);}
      $meta=get_post_meta($p->ID);
@@ -41,7 +78,7 @@ final class HTS_Pages {
      $rows[]=$row;
    }
    $columns=array_merge(self::columns(),$allMeta);
-   wp_send_json_success(['rows'=>$rows,'columns'=>$columns,'total'=>(int)$q->found_posts,'pages'=>(int)$q->max_num_pages,'page'=>$page,'size'=>$size,'languages'=>function_exists('pll_languages_list')?pll_languages_list(['fields'=>'slug']):[]]);
+   wp_send_json_success(['rows'=>$rows,'columns'=>$columns,'total'=>(int)$q->found_posts,'pages'=>(int)$q->max_num_pages,'page'=>$page,'size'=>$size,'link_scan'=>['scanned'=>$graph['scanned'],'limited'=>$graph['limited']],'languages'=>function_exists('pll_languages_list')?pll_languages_list(['fields'=>'slug']):[]]);
  }
  static function allowed_meta($key){
    if(!is_string($key)||strlen($key)>191||!preg_match('/^[a-zA-Z0-9_-]+$/',$key))return false;
@@ -99,6 +136,7 @@ final class HTS_Pages {
      $res=wp_update_post(wp_slash($update),true);
      if(is_wp_error($res))wp_send_json_error(['message'=>$res->get_error_message()],400);
    }
+   self::clear_link_graph();
    clean_post_cache($id);
    wp_send_json_success(['message'=>'Saved','field'=>$field,'reload'=>true]);
  }
@@ -130,6 +168,9 @@ final class HTS_Pages {
    #htsp-table td.htsp-active{overflow:visible;min-width:270px}
    #htsp-colpanel{background:#fff;padding:12px;border:1px solid #c3c4c7;max-height:190px;overflow:auto}
    #htsp-colpanel label{display:inline-block;margin:5px 15px 5px 0}
+   #htsp-table td.htsp-links{min-width:160px;max-width:300px;white-space:normal;vertical-align:top;cursor:default}
+   #htsp-table td.htsp-links ul{margin:5px 0 0 18px;max-height:160px;overflow:auto}
+   #htsp-table td.htsp-links summary{cursor:pointer;color:#2271b1}
    .htsp small{color:#6b7280;font-size:12px}
    #htsp-table td.htsp-preview-cell{padding:5px;min-width:148px;width:148px;max-width:148px}
    .htsp-thumb{position:relative;display:block;padding:0;margin:0;width:136px;height:86px;overflow:hidden;cursor:zoom-in;border:1px solid #a9b5c2;border-radius:4px;background:#f8fafc}
@@ -147,7 +188,7 @@ final class HTS_Pages {
     'use strict';
     const ajax=<?php echo wp_json_encode($endpoint); ?>,nonce=<?php echo wp_json_encode($nonce); ?>;
     const $=id=>document.getElementById(id), state={page:1,pages:1,cols:{},rows:[],hidden:new Set(JSON.parse(localStorage.getItem('htsp_hidden')||'[]'))};
-    const readonly=new Set(['preview','ID','permalink','post_modified','post_modified_gmt','guid','post_type','post_mime_type','comment_count','to_ping','pinged']);
+    const readonly=new Set(['preview','incoming','outgoing','ID','permalink','post_modified','post_modified_gmt','guid','post_type','post_mime_type','comment_count','to_ping','pinged']);
     const escape=s=>String(s??'');
     const msg=(s,bad=false)=>{$('htsp-msg').textContent=s;$('htsp-msg').style.color=bad?'#b32d2e':'#176c43';};
     async function request(action,fields){
@@ -164,7 +205,15 @@ final class HTS_Pages {
       state.rows.forEach(row=>{
         const tr=tbody.insertRow();
         fields.forEach(field=>{
-          const td=tr.insertCell();const value=escape(row[field]);td.textContent=value||'—';td.title=value;
+          const td=tr.insertCell();const value=escape(row[field]);td.textContent=(typeof row[field]==='object'?'':value)||'—';td.title=typeof row[field]==='object'?'':value;
+          if(field==='incoming'||field==='outgoing'){
+            const items=Array.isArray(row[field])?row[field]:[];
+            td.className='htsp-links';td.replaceChildren();
+            const count=document.createElement('strong');count.textContent=items.length+' links';td.append(count);
+            if(items.length){const details=document.createElement('details');const sum=document.createElement('summary');sum.textContent='Show objects';details.append(sum);
+              const list=document.createElement('ul');items.forEach(item=>{const li=document.createElement('li');const a=document.createElement('a');a.href=item.url||'#';a.target='_blank';a.rel='noopener noreferrer';a.textContent=item.title+' (#'+item.id+')';li.append(a);list.append(li);});details.append(list);td.append(details);}
+            return;
+          }
           if(field==='preview'){
             td.textContent='';td.className='htsp-preview-cell';
             const u=escape(row.permalink);
@@ -215,7 +264,7 @@ final class HTS_Pages {
     async function load(){
       msg('Loading…');
       try{const data=await request('htsp_list',{page:state.page,size:$('htsp-size').value,status:$('htsp-status').value,search:$('htsp-search').value});
-        state.cols=data.columns;state.rows=data.rows;state.page=data.page;state.pages=data.pages;window.htspLanguages=data.languages;draw();msg(data.total+' pages found');
+        state.cols=data.columns;state.rows=data.rows;state.page=data.page;state.pages=data.pages;window.htspLanguages=data.languages;draw();msg(data.total+' pages found · '+data.link_scan.scanned+' objects scanned'+(data.link_scan.limited?' (scan limit reached)':''));
       }catch(e){msg(e.message,true);}
     }
     let delay;$('htsp-search').addEventListener('input',()=>{clearTimeout(delay);delay=setTimeout(()=>{state.page=1;load();},350);});
