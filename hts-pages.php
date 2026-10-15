@@ -2,13 +2,13 @@
 /**
  * Plugin Name: HTS Pages
  * Description: Spreadsheet-style management of WordPress page properties without opening Gutenberg.
- * Version: 0.4.0
+ * Version: 0.5.0
  * Author: HiTechStories
  * Text Domain: hts-pages
  */
 if (!defined('ABSPATH')) exit;
 final class HTS_Pages {
- const VERSION='0.4.0';
+ const VERSION='0.5.0';
  const FIELDS=['post_title'=>'Title','post_name'=>'Slug','post_status'=>'Status','post_author'=>'Author ID','post_date'=>'Publication date','post_date_gmt'=>'Publication date GMT','post_parent'=>'Parent ID','menu_order'=>'Order','post_excerpt'=>'Excerpt','comment_status'=>'Comments','ping_status'=>'Pings','post_password'=>'Password','post_template'=>'Template','thumbnail_id'=>'Featured image ID','language'=>'Polylang language'];
  const SEO=['_yoast_wpseo_title','_yoast_wpseo_metadesc','_yoast_wpseo_focuskw','rank_math_title','rank_math_description','rank_math_focus_keyword'];
  static function init(){
@@ -200,6 +200,18 @@ final class HTS_Pages {
    .htsp-graph-muted{color:#646970}
    .htsp-graph-note{padding:8px 18px;color:#646970;border-top:1px solid #ddd}
    @media(max-width:780px){.htsp-graph-layout{grid-template-columns:1fr}.htsp-graph-column{min-height:0}}
+   .htsp-linked-item{display:flex;align-items:center;gap:9px;text-align:left;min-width:0}
+   .htsp-linked-thumb{display:block;position:relative;flex:none;width:112px;height:75px;border:1px solid #b6bcc5;border-radius:4px;background:#f5f7fa;overflow:hidden;padding:0;cursor:zoom-in}
+   .htsp-linked-viewport{display:block;position:absolute;inset:0;overflow:hidden;pointer-events:none}
+   .htsp-linked-viewport iframe{position:absolute;left:0;top:0;width:1000px;height:670px;transform:scale(.111);transform-origin:top left;border:0;pointer-events:none}
+   .htsp-linked-details{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:0;overflow-wrap:anywhere}
+   .htsp-linked-thumb:focus-visible{outline:3px solid #2271b1;outline-offset:1px}
+   #htsp-table td.htsp-links li{list-style:none;margin:8px 0}
+   #htsp-table td.htsp-links ul{margin-left:0;max-height:320px}
+   #htsp-table td.htsp-links{max-width:370px;min-width:175px}
+   .htsp-graph-object{cursor:default}
+   .htsp-graph-center .htsp-linked-item{justify-content:center;flex-direction:column;align-items:center;text-align:center;margin-bottom:12px}
+   .htsp-graph-center .htsp-linked-details{align-items:center}
    .htsp small{color:#6b7280;font-size:12px}
    #htsp-table td.htsp-preview-cell{padding:5px;min-width:148px;width:148px;max-width:148px}
    .htsp-thumb{position:relative;display:block;padding:0;margin:0;width:136px;height:86px;overflow:hidden;cursor:zoom-in;border:1px solid #a9b5c2;border-radius:4px;background:#f8fafc}
@@ -226,6 +238,27 @@ final class HTS_Pages {
       const json=await res.json();if(!json.success)throw Error(json.data?.message||'Request failed');
       return json.data;
     }
+    function miniPreview(item,mode='graph'){
+      const wrap=document.createElement('span');wrap.className='htsp-linked-item';
+      const url=String(item.url||''),title=String(item.title||'Untitled');
+      if(url.startsWith('https://')||url.startsWith('http://')){
+        const button=document.createElement('button');button.type='button';button.className='htsp-linked-thumb';button.title='Preview: '+title;
+        const viewport=document.createElement('span');viewport.className='htsp-linked-viewport';
+        const iframe=document.createElement('iframe');iframe.src=url;iframe.loading='lazy';iframe.tabIndex=-1;iframe.title='';iframe.setAttribute('aria-hidden','true');
+        viewport.append(iframe);button.append(viewport);wrap.append(button);
+        button.addEventListener('click',e=>{e.stopPropagation();openPreview(url,title);});
+      }
+      const details=document.createElement('span');details.className='htsp-linked-details';
+      const name=document.createElement('span');name.textContent=title+' (#'+item.id+')';details.append(name);
+      if(mode==='graph'){
+        const inspect=document.createElement('button');inspect.type='button';inspect.className='button button-small';inspect.textContent='Dependencies ↗';
+        inspect.addEventListener('click',()=>openGraph(item.id));details.append(inspect);
+      }
+      if(url.startsWith('https://')||url.startsWith('http://')){
+        const link=document.createElement('a');link.href=url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Open page ↗';details.append(link);
+      }
+      wrap.append(details);return wrap;
+    }
     function draw(){
       const fields=Object.keys(state.cols).filter(k=>!state.hidden.has(k));
       const head=$('htsp-table').tHead||$('htsp-table').createTHead();head.replaceChildren();
@@ -246,7 +279,7 @@ final class HTS_Pages {
             td.className='htsp-links';td.replaceChildren();
             const count=document.createElement('strong');count.textContent=items.length+' links';td.append(count);
             if(items.length){const details=document.createElement('details');const sum=document.createElement('summary');sum.textContent='Show objects';details.append(sum);
-              const list=document.createElement('ul');items.forEach(item=>{const li=document.createElement('li');const a=document.createElement('a');a.href=item.url||'#';a.target='_blank';a.rel='noopener noreferrer';a.textContent=item.title+' (#'+item.id+')';li.append(a);list.append(li);});details.append(list);td.append(details);}
+              const list=document.createElement('ul');items.forEach(item=>{const li=document.createElement('li');li.append(miniPreview(item,'table'));list.append(li);});details.append(list);td.append(details);}
             return;
           }
           if(field==='preview'){
@@ -287,12 +320,12 @@ final class HTS_Pages {
           const h=document.createElement('h3');h.textContent=title+' ('+items.length+')';box.append(h);
           if(!items.length){const p=document.createElement('p');p.className='htsp-graph-muted';p.textContent='No detected links';box.append(p);}
           items.forEach(item=>{
-            const btn=document.createElement('button');btn.className='htsp-graph-object';btn.type='button';btn.textContent=item.title+' (#'+item.id+')';btn.title='Inspect dependencies of '+item.title;
-            btn.addEventListener('click',()=>openGraph(item.id));box.append(btn);
+            const card=document.createElement('div');card.className='htsp-graph-object';card.append(miniPreview(item,'graph'));box.append(card);
           });return box;
         };
         layout.append(column('← Incoming references',data.incoming));
         const center=document.createElement('section');center.className='htsp-graph-column htsp-graph-center';
+        const central=miniPreview({id:data.id,title:data.title,url:data.url},'center');center.append(central);
         const name=document.createElement('strong');name.textContent=data.title;center.append(name);
         const meta=document.createElement('p');meta.textContent='#'+data.id+' · '+data.type+' · '+data.status;center.append(meta);
         if(data.url){const link=document.createElement('a');link.href=data.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Open page ↗';center.append(link);}
