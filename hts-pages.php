@@ -2,18 +2,19 @@
 /**
  * Plugin Name: HTS Pages
  * Description: Spreadsheet-style management of WordPress page properties without opening Gutenberg.
- * Version: 0.3.0
+ * Version: 0.4.0
  * Author: HiTechStories
  * Text Domain: hts-pages
  */
 if (!defined('ABSPATH')) exit;
 final class HTS_Pages {
- const VERSION='0.3.0';
+ const VERSION='0.4.0';
  const FIELDS=['post_title'=>'Title','post_name'=>'Slug','post_status'=>'Status','post_author'=>'Author ID','post_date'=>'Publication date','post_date_gmt'=>'Publication date GMT','post_parent'=>'Parent ID','menu_order'=>'Order','post_excerpt'=>'Excerpt','comment_status'=>'Comments','ping_status'=>'Pings','post_password'=>'Password','post_template'=>'Template','thumbnail_id'=>'Featured image ID','language'=>'Polylang language'];
  const SEO=['_yoast_wpseo_title','_yoast_wpseo_metadesc','_yoast_wpseo_focuskw','rank_math_title','rank_math_description','rank_math_focus_keyword'];
  static function init(){
    add_action('admin_menu',[__CLASS__,'menu']);
    add_action('wp_ajax_htsp_list',[__CLASS__,'listing']);
+   add_action('wp_ajax_htsp_graph',[__CLASS__,'graph_endpoint']);
    add_action('wp_ajax_htsp_save',[__CLASS__,'save']);
    add_action('save_post',[__CLASS__,'clear_link_graph']);
    add_action('deleted_post',[__CLASS__,'clear_link_graph']);
@@ -21,7 +22,7 @@ final class HTS_Pages {
  static function menu(){ add_menu_page('HTS Pages','HTS Pages','edit_pages','hts-pages',[__CLASS__,'screen'],'dashicons-editor-table',25); }
  static function guard(){ if(!current_user_can('edit_pages')) wp_send_json_error(['message'=>'Permission denied'],403); check_ajax_referer('htsp_nonce','nonce'); }
  static function statuses(){return ['publish','draft','pending','private','future','trash'];}
- static function columns(){ $cols=['preview'=>'Preview','ID'=>'ID','incoming'=>'Incoming links','outgoing'=>'Outgoing links','post_title'=>'Title','post_name'=>'Slug','post_status'=>'Status','permalink'=>'URL','post_author'=>'Author ID','post_date'=>'Published (local)','post_date_gmt'=>'Published (GMT)','post_modified'=>'Modified','post_modified_gmt'=>'Modified GMT','post_parent'=>'Parent ID','menu_order'=>'Order','post_excerpt'=>'Excerpt','comment_status'=>'Comments','ping_status'=>'Pings','post_password'=>'Password','post_template'=>'Template','thumbnail_id'=>'Image ID','language'=>'Language','guid'=>'GUID','post_type'=>'Type','post_mime_type'=>'MIME','comment_count'=>'Comments #','to_ping'=>'To ping','pinged'=>'Pinged']; foreach(get_object_taxonomies('page','objects') as $tax){$cols['tax:'.$tax->name]='Taxonomy: '.$tax->label;} return $cols; }
+ static function columns(){ $cols=['preview'=>'Preview','dependencies'=>'Dependencies','ID'=>'ID','incoming'=>'Incoming links','outgoing'=>'Outgoing links','post_title'=>'Title','post_name'=>'Slug','post_status'=>'Status','permalink'=>'URL','post_author'=>'Author ID','post_date'=>'Published (local)','post_date_gmt'=>'Published (GMT)','post_modified'=>'Modified','post_modified_gmt'=>'Modified GMT','post_parent'=>'Parent ID','menu_order'=>'Order','post_excerpt'=>'Excerpt','comment_status'=>'Comments','ping_status'=>'Pings','post_password'=>'Password','post_template'=>'Template','thumbnail_id'=>'Image ID','language'=>'Language','guid'=>'GUID','post_type'=>'Type','post_mime_type'=>'MIME','comment_count'=>'Comments #','to_ping'=>'To ping','pinged'=>'Pinged']; foreach(get_object_taxonomies('page','objects') as $tax){$cols['tax:'.$tax->name]='Taxonomy: '.$tax->label;} return $cols; }
  static function link_graph(){
    // Cache for 15 minutes to avoid scanning the full site on every table interaction.
    $graph=get_transient('htsp_links_v3');
@@ -57,6 +58,17 @@ final class HTS_Pages {
    return $graph;
  }
  static function clear_link_graph(){delete_transient('htsp_links_v3');}
+ static function graph_endpoint(){
+   self::guard();
+   $id=absint($_POST['id']??0);$post=get_post($id);
+   if(!$post||!current_user_can('edit_post',$id))wp_send_json_error(['message'=>'Object unavailable or inaccessible'],403);
+   $graph=self::link_graph();
+   $filter=function($item){return isset($item['id']) && current_user_can('edit_post',(int)$item['id']);};
+   $incoming=array_values(array_filter(array_values($graph['incoming'][$id]??[]),$filter));
+   $outgoing=array_values(array_filter(array_values($graph['outgoing'][$id]??[]),$filter));
+   wp_send_json_success(['id'=>$id,'title'=>get_the_title($id),'type'=>$post->post_type,'status'=>$post->post_status,'url'=>get_permalink($id),'incoming'=>$incoming,'outgoing'=>$outgoing,'scanned'=>$graph['scanned'],'limited'=>$graph['limited']]);
+ }
+
  static function listing(){
    self::guard();
    $page=max(1,absint($_POST['page']??1));$size=min(100,max(10,absint($_POST['size']??30)));
@@ -148,6 +160,11 @@ final class HTS_Pages {
    <p>Inline editing of page properties only; Gutenberg content is never modified. Click a cell to edit. ID, URL, GUID, timestamps and system fields are read-only. Sensitive or structured metadata is intentionally excluded.</p>
    <div class="htsp-toolbar"><input id="htsp-search" placeholder="Search page title…"><select id="htsp-status"><option value="">All statuses</option><?php foreach(self::statuses() as $s)echo '<option value="'.esc_attr($s).'">'.esc_html(ucfirst($s)).'</option>'; ?></select><select id="htsp-size"><option>30</option><option>50</option><option>100</option></select><button class="button" id="htsp-reload">Refresh</button><button class="button" id="htsp-columns">Columns</button><span id="htsp-msg" role="status"></span></div>
    <div id="htsp-colpanel" hidden></div><div class="htsp-scroller"><table class="widefat striped" id="htsp-table"><thead></thead><tbody></tbody></table></div>
+   <dialog id="htsp-graph-dialog" class="htsp-dialog htsp-graph-dialog" aria-labelledby="htsp-graph-title">
+     <div class="htsp-dialog-bar"><strong id="htsp-graph-title">Page dependencies</strong><span style="flex:1"></span><button type="button" class="button" id="htsp-graph-back" disabled>← Back</button><button type="button" class="button" id="htsp-graph-close">Close ✕</button></div>
+     <div id="htsp-graph-content" role="status"></div>
+     <p class="htsp-graph-note">Links detected in saved content only. Menus, dynamic blocks, redirects and metadata-only links are not indexed. This view does not edit page content.</p>
+   </dialog>
    <dialog id="htsp-preview-dialog" class="htsp-dialog" aria-labelledby="htsp-preview-title">
      <div class="htsp-dialog-bar"><strong id="htsp-preview-title"></strong><span style="flex:1"></span><a id="htsp-preview-link" class="button" target="_blank" rel="noopener noreferrer">Open in new tab ↗</a><button type="button" class="button" id="htsp-preview-close">Close ✕</button></div>
      <iframe id="htsp-preview-frame" title="Live page preview"></iframe>
@@ -171,6 +188,18 @@ final class HTS_Pages {
    #htsp-table td.htsp-links{min-width:160px;max-width:300px;white-space:normal;vertical-align:top;cursor:default}
    #htsp-table td.htsp-links ul{margin:5px 0 0 18px;max-height:160px;overflow:auto}
    #htsp-table td.htsp-links summary{cursor:pointer;color:#2271b1}
+   .htsp-graph-dialog{width:min(96vw,1200px);height:auto;max-height:90vh}
+   #htsp-graph-content{padding:18px;overflow:auto;flex:1;min-height:240px}
+   .htsp-graph-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(200px,.9fr) minmax(0,1fr);align-items:start;gap:18px}
+   .htsp-graph-column{background:#f6f7f7;border:1px solid #dcdcde;border-radius:6px;padding:12px;min-height:170px}
+   .htsp-graph-column h3{margin:0 0 12px}
+   .htsp-graph-object{display:block;width:100%;box-sizing:border-box;text-align:left;background:#fff;border:1px solid #ccd0d4;border-radius:5px;padding:10px;margin:7px 0;cursor:pointer;white-space:normal;overflow-wrap:anywhere}
+   .htsp-graph-object:hover{border-color:#2271b1;background:#edf6fc}
+   .htsp-graph-center{background:#eaf4fb;border:2px solid #2271b1;text-align:center;padding:22px 12px}
+   .htsp-graph-center strong{font-size:17px;overflow-wrap:anywhere}
+   .htsp-graph-muted{color:#646970}
+   .htsp-graph-note{padding:8px 18px;color:#646970;border-top:1px solid #ddd}
+   @media(max-width:780px){.htsp-graph-layout{grid-template-columns:1fr}.htsp-graph-column{min-height:0}}
    .htsp small{color:#6b7280;font-size:12px}
    #htsp-table td.htsp-preview-cell{padding:5px;min-width:148px;width:148px;max-width:148px}
    .htsp-thumb{position:relative;display:block;padding:0;margin:0;width:136px;height:86px;overflow:hidden;cursor:zoom-in;border:1px solid #a9b5c2;border-radius:4px;background:#f8fafc}
@@ -188,7 +217,7 @@ final class HTS_Pages {
     'use strict';
     const ajax=<?php echo wp_json_encode($endpoint); ?>,nonce=<?php echo wp_json_encode($nonce); ?>;
     const $=id=>document.getElementById(id), state={page:1,pages:1,cols:{},rows:[],hidden:new Set(JSON.parse(localStorage.getItem('htsp_hidden')||'[]'))};
-    const readonly=new Set(['preview','incoming','outgoing','ID','permalink','post_modified','post_modified_gmt','guid','post_type','post_mime_type','comment_count','to_ping','pinged']);
+    const readonly=new Set(['preview','dependencies','incoming','outgoing','ID','permalink','post_modified','post_modified_gmt','guid','post_type','post_mime_type','comment_count','to_ping','pinged']);
     const escape=s=>String(s??'');
     const msg=(s,bad=false)=>{$('htsp-msg').textContent=s;$('htsp-msg').style.color=bad?'#b32d2e':'#176c43';};
     async function request(action,fields){
@@ -206,6 +235,12 @@ final class HTS_Pages {
         const tr=tbody.insertRow();
         fields.forEach(field=>{
           const td=tr.insertCell();const value=escape(row[field]);td.textContent=(typeof row[field]==='object'?'':value)||'—';td.title=typeof row[field]==='object'?'':value;
+          if(field==='dependencies'){
+            td.textContent='';td.className='htsp-readonly';
+            const button=document.createElement('button');button.className='button';button.type='button';
+            button.textContent='↗ View graph';button.addEventListener('click',()=>openGraph(row.ID));td.append(button);
+            return;
+          }
           if(field==='incoming'||field==='outgoing'){
             const items=Array.isArray(row[field])?row[field]:[];
             td.className='htsp-links';td.replaceChildren();
@@ -234,6 +269,41 @@ final class HTS_Pages {
       const panel=$('htsp-colpanel');panel.replaceChildren();
       Object.keys(state.cols).forEach(field=>{const label=document.createElement('label');const cb=document.createElement('input');cb.type='checkbox';cb.checked=!state.hidden.has(field);cb.addEventListener('change',()=>{if(cb.checked)state.hidden.delete(field);else state.hidden.add(field);localStorage.setItem('htsp_hidden',JSON.stringify([...state.hidden]));draw();});label.append(cb,' '+state.cols[field]);panel.append(label);});
     }
+    const graphHistory=[];
+    async function openGraph(id,push=true){
+      const dialog=$('htsp-graph-dialog'),host=$('htsp-graph-content');
+      if(push&&dialog.open&&dialog.dataset.current)graphHistory.push(Number(dialog.dataset.current));
+      $('htsp-graph-back').disabled=graphHistory.length===0;
+      if(!dialog.open){if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');}
+      host.textContent='Loading page dependencies…';
+      try{
+        const data=await request('htsp_graph',{id});
+        dialog.dataset.current=data.id;
+        $('htsp-graph-title').textContent='Dependencies · '+data.title;
+        host.replaceChildren();
+        const layout=document.createElement('div');layout.className='htsp-graph-layout';
+        const column=(title,items)=>{
+          const box=document.createElement('section');box.className='htsp-graph-column';
+          const h=document.createElement('h3');h.textContent=title+' ('+items.length+')';box.append(h);
+          if(!items.length){const p=document.createElement('p');p.className='htsp-graph-muted';p.textContent='No detected links';box.append(p);}
+          items.forEach(item=>{
+            const btn=document.createElement('button');btn.className='htsp-graph-object';btn.type='button';btn.textContent=item.title+' (#'+item.id+')';btn.title='Inspect dependencies of '+item.title;
+            btn.addEventListener('click',()=>openGraph(item.id));box.append(btn);
+          });return box;
+        };
+        layout.append(column('← Incoming references',data.incoming));
+        const center=document.createElement('section');center.className='htsp-graph-column htsp-graph-center';
+        const name=document.createElement('strong');name.textContent=data.title;center.append(name);
+        const meta=document.createElement('p');meta.textContent='#'+data.id+' · '+data.type+' · '+data.status;center.append(meta);
+        if(data.url){const link=document.createElement('a');link.href=data.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Open page ↗';center.append(link);}
+        layout.append(center,column('Outgoing references →',data.outgoing));host.append(layout);
+        const note=document.createElement('p');note.className='htsp-graph-muted';note.textContent='Scanned: '+data.scanned+' objects'+(data.limited?' · limit reached, results may be incomplete':'');host.append(note);
+      }catch(err){host.textContent='Unable to load dependencies: '+err.message;}
+      $('htsp-graph-back').disabled=graphHistory.length===0;
+    }
+    $('htsp-graph-back').onclick=()=>{if(graphHistory.length)openGraph(graphHistory.pop(),false);};
+    $('htsp-graph-close').onclick=()=>$('htsp-graph-dialog').close();
+    $('htsp-graph-dialog').addEventListener('close',()=>{graphHistory.length=0;delete $('htsp-graph-dialog').dataset.current;});
     function openPreview(url,title){
       const dialog=$('htsp-preview-dialog'),frame=$('htsp-preview-frame');
       $('htsp-preview-title').textContent=title;
