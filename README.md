@@ -13,4 +13,4 @@ WordPress plugin v0.1.0 — spreadsheet-like page property editing in **WP Admin
 System/secret/serialized metadata is deliberately not exposed. Arbitrary internal keys cannot be edited. Language changes may affect Polylang associations. Dates must be entered as `YYYY-MM-DD HH:MM:SS`; taxonomy values use existing slugs separated by commas. Each save is immediate, including status changes on live pages; review carefully. No bulk changes in v0.1.0. The WordPress post content and filtered content fields are never requested or updated.
 
 ## Install
-Copy `hts-pages/hts-pages.php` into `wp-content/plugins/hts-pages/hts-pages.php`, then activate. WordPress 6.4+ and PHP 8.0+ recommended.
+Download the GitHub repository ZIP, then in WordPress go to Plugins → Add New → Upload Plugin. The plugin header is at the archive root (`hts-pages.php`). Activate **HTS Pages**. Alternatively copy `hts-pages.php` into `wp-content/plugins/hts-pages/hts-pages.php`. WordPress 6.4+ and PHP 8.0+ recommended.
