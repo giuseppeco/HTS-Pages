@@ -2,13 +2,13 @@
 /**
  * Plugin Name: HTS Pages
  * Description: Spreadsheet-style management of WordPress page properties without opening Gutenberg.
- * Version: 0.1.0
+ * Version: 0.2.0
  * Author: HiTechStories
  * Text Domain: hts-pages
  */
 if (!defined('ABSPATH')) exit;
 final class HTS_Pages {
- const VERSION='0.1.0';
+ const VERSION='0.2.0';
  const FIELDS=['post_title'=>'Title','post_name'=>'Slug','post_status'=>'Status','post_author'=>'Author ID','post_date'=>'Publication date','post_date_gmt'=>'Publication date GMT','post_parent'=>'Parent ID','menu_order'=>'Order','post_excerpt'=>'Excerpt','comment_status'=>'Comments','ping_status'=>'Pings','post_password'=>'Password','post_template'=>'Template','thumbnail_id'=>'Featured image ID','language'=>'Polylang language'];
  const SEO=['_yoast_wpseo_title','_yoast_wpseo_metadesc','_yoast_wpseo_focuskw','rank_math_title','rank_math_description','rank_math_focus_keyword'];
  static function init(){
@@ -19,7 +19,7 @@ final class HTS_Pages {
  static function menu(){ add_menu_page('HTS Pages','HTS Pages','edit_pages','hts-pages',[__CLASS__,'screen'],'dashicons-editor-table',25); }
  static function guard(){ if(!current_user_can('edit_pages')) wp_send_json_error(['message'=>'Permission denied'],403); check_ajax_referer('htsp_nonce','nonce'); }
  static function statuses(){return ['publish','draft','pending','private','future','trash'];}
- static function columns(){ $cols=['ID'=>'ID','post_title'=>'Title','post_name'=>'Slug','post_status'=>'Status','permalink'=>'URL','post_author'=>'Author ID','post_date'=>'Published (local)','post_date_gmt'=>'Published (GMT)','post_modified'=>'Modified','post_modified_gmt'=>'Modified GMT','post_parent'=>'Parent ID','menu_order'=>'Order','post_excerpt'=>'Excerpt','comment_status'=>'Comments','ping_status'=>'Pings','post_password'=>'Password','post_template'=>'Template','thumbnail_id'=>'Image ID','language'=>'Language','guid'=>'GUID','post_type'=>'Type','post_mime_type'=>'MIME','comment_count'=>'Comments #','to_ping'=>'To ping','pinged'=>'Pinged']; foreach(get_object_taxonomies('page','objects') as $tax){$cols['tax:'.$tax->name]='Taxonomy: '.$tax->label;} return $cols; }
+ static function columns(){ $cols=['preview'=>'Preview','ID'=>'ID','post_title'=>'Title','post_name'=>'Slug','post_status'=>'Status','permalink'=>'URL','post_author'=>'Author ID','post_date'=>'Published (local)','post_date_gmt'=>'Published (GMT)','post_modified'=>'Modified','post_modified_gmt'=>'Modified GMT','post_parent'=>'Parent ID','menu_order'=>'Order','post_excerpt'=>'Excerpt','comment_status'=>'Comments','ping_status'=>'Pings','post_password'=>'Password','post_template'=>'Template','thumbnail_id'=>'Image ID','language'=>'Language','guid'=>'GUID','post_type'=>'Type','post_mime_type'=>'MIME','comment_count'=>'Comments #','to_ping'=>'To ping','pinged'=>'Pinged']; foreach(get_object_taxonomies('page','objects') as $tax){$cols['tax:'.$tax->name]='Taxonomy: '.$tax->label;} return $cols; }
  static function listing(){
    self::guard();
    $page=max(1,absint($_POST['page']??1));$size=min(100,max(10,absint($_POST['size']??30)));
@@ -110,6 +110,10 @@ final class HTS_Pages {
    <p>Inline editing of page properties only; Gutenberg content is never modified. Click a cell to edit. ID, URL, GUID, timestamps and system fields are read-only. Sensitive or structured metadata is intentionally excluded.</p>
    <div class="htsp-toolbar"><input id="htsp-search" placeholder="Search page title…"><select id="htsp-status"><option value="">All statuses</option><?php foreach(self::statuses() as $s)echo '<option value="'.esc_attr($s).'">'.esc_html(ucfirst($s)).'</option>'; ?></select><select id="htsp-size"><option>30</option><option>50</option><option>100</option></select><button class="button" id="htsp-reload">Refresh</button><button class="button" id="htsp-columns">Columns</button><span id="htsp-msg" role="status"></span></div>
    <div id="htsp-colpanel" hidden></div><div class="htsp-scroller"><table class="widefat striped" id="htsp-table"><thead></thead><tbody></tbody></table></div>
+   <dialog id="htsp-preview-dialog" class="htsp-dialog" aria-labelledby="htsp-preview-title">
+     <div class="htsp-dialog-bar"><strong id="htsp-preview-title"></strong><span style="flex:1"></span><a id="htsp-preview-link" class="button" target="_blank" rel="noopener noreferrer">Open in new tab ↗</a><button type="button" class="button" id="htsp-preview-close">Close ✕</button></div>
+     <iframe id="htsp-preview-frame" title="Live page preview"></iframe>
+   </dialog>
    <div class="htsp-toolbar"><button class="button" id="htsp-prev">← Previous</button><span id="htsp-page"></span><button class="button" id="htsp-next">Next →</button></div>
    </div>
    <style>
@@ -127,13 +131,23 @@ final class HTS_Pages {
    #htsp-colpanel{background:#fff;padding:12px;border:1px solid #c3c4c7;max-height:190px;overflow:auto}
    #htsp-colpanel label{display:inline-block;margin:5px 15px 5px 0}
    .htsp small{color:#6b7280;font-size:12px}
+   #htsp-table td.htsp-preview-cell{padding:5px;min-width:148px;width:148px;max-width:148px}
+   .htsp-thumb{position:relative;display:block;padding:0;margin:0;width:136px;height:86px;overflow:hidden;cursor:zoom-in;border:1px solid #a9b5c2;border-radius:4px;background:#f8fafc}
+   .htsp-thumb-inner{position:absolute;display:block;inset:0;overflow:hidden;pointer-events:none}
+   .htsp-thumb iframe{position:absolute;left:0;top:0;width:1024px;height:650px;border:0;transform:scale(.1328);transform-origin:top left;pointer-events:none}
+   .htsp-thumb:focus-visible{outline:3px solid #2271b1;outline-offset:2px}
+   .htsp-dialog{padding:0;border:1px solid #9da9b4;border-radius:7px;width:min(95vw,1400px);height:min(92vh,1000px);max-width:95vw;max-height:92vh;box-shadow:0 20px 75px #0005}
+   .htsp-dialog::backdrop{background:#121c2baf}
+   .htsp-dialog[open]{display:flex;flex-direction:column}
+   .htsp-dialog-bar{display:flex;align-items:center;gap:10px;padding:10px 15px;border-bottom:1px solid #ddd;background:#fff}
+   #htsp-preview-frame{flex:1;width:100%;min-height:0;border:0;background:white}
    </style>
    <script>
    (() => {
     'use strict';
     const ajax=<?php echo wp_json_encode($endpoint); ?>,nonce=<?php echo wp_json_encode($nonce); ?>;
     const $=id=>document.getElementById(id), state={page:1,pages:1,cols:{},rows:[],hidden:new Set(JSON.parse(localStorage.getItem('htsp_hidden')||'[]'))};
-    const readonly=new Set(['ID','permalink','post_modified','post_modified_gmt','guid','post_type','post_mime_type','comment_count','to_ping','pinged']);
+    const readonly=new Set(['preview','ID','permalink','post_modified','post_modified_gmt','guid','post_type','post_mime_type','comment_count','to_ping','pinged']);
     const escape=s=>String(s??'');
     const msg=(s,bad=false)=>{$('htsp-msg').textContent=s;$('htsp-msg').style.color=bad?'#b32d2e':'#176c43';};
     async function request(action,fields){
@@ -151,6 +165,17 @@ final class HTS_Pages {
         const tr=tbody.insertRow();
         fields.forEach(field=>{
           const td=tr.insertCell();const value=escape(row[field]);td.textContent=value||'—';td.title=value;
+          if(field==='preview'){
+            td.textContent='';td.className='htsp-preview-cell';
+            const u=escape(row.permalink);
+            if(u.startsWith('https://')||u.startsWith('http://')){
+              const thumb=document.createElement('button');thumb.type='button';thumb.className='htsp-thumb';thumb.title='Preview page';thumb.setAttribute('aria-label','Preview '+escape(row.post_title));
+              const pane=document.createElement('span');pane.className='htsp-thumb-inner';
+              const frame=document.createElement('iframe');frame.src=u;frame.loading='lazy';frame.tabIndex=-1;frame.setAttribute('aria-hidden','true');frame.title='';pane.append(frame);thumb.append(pane);
+              thumb.onclick=()=>openPreview(u,escape(row.post_title));td.append(thumb);
+            }else td.textContent='No preview';
+            return;
+          }
           if(readonly.has(field)){td.className='htsp-readonly';if(field==='permalink'&&value){td.textContent='';const a=document.createElement('a');a.href=value;a.target='_blank';a.rel='noopener noreferrer';a.textContent='View ↗';td.append(a);}}
           else{td.className='htsp-edit';td.title='Click to edit • '+value;td.addEventListener('click',()=>edit(td,row,field));}
         });
@@ -160,6 +185,15 @@ final class HTS_Pages {
       const panel=$('htsp-colpanel');panel.replaceChildren();
       Object.keys(state.cols).forEach(field=>{const label=document.createElement('label');const cb=document.createElement('input');cb.type='checkbox';cb.checked=!state.hidden.has(field);cb.addEventListener('change',()=>{if(cb.checked)state.hidden.delete(field);else state.hidden.add(field);localStorage.setItem('htsp_hidden',JSON.stringify([...state.hidden]));draw();});label.append(cb,' '+state.cols[field]);panel.append(label);});
     }
+    function openPreview(url,title){
+      const dialog=$('htsp-preview-dialog'),frame=$('htsp-preview-frame');
+      $('htsp-preview-title').textContent=title;
+      $('htsp-preview-link').href=url;
+      frame.src=url;
+      if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
+    }
+    $('htsp-preview-close').onclick=()=>{$('htsp-preview-dialog').close();};
+    $('htsp-preview-dialog').addEventListener('close',()=>{$('htsp-preview-frame').src='about:blank';});
     function edit(td,row,field){
       if(td.classList.contains('htsp-active'))return;
       const initial=escape(row[field]??'');if(field==='post_password'&&initial==='••••••'){msg('Password is write-only: enter a replacement.',false);}
