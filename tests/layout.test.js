@@ -9,4 +9,8 @@ for(const [id,a] of Object.entries(m.positions))for(const [other,b] of Object.en
 assert(m.backEdges>=1);
 assert(L.edgePath(m.positions[1],m.positions[3]).startsWith('M '));
 assert.equal(Object.keys(L.compute([],[],0).positions).length,0);
+assert.equal(L.H,318,'layout must match metric-expanded CSS node height');
+const orphans=[{id:1,title:'Home',link_counts:{in:1}},{id:2,title:'Z orphan',link_counts:{in:0}},{id:3,title:'Target',link_counts:{in:1}}];
+const sorted=L.compute(orphans,[{source:2,target:1},{source:1,target:3}],1);
+assert.equal(sorted.roots[0],2,'zero-inbound pages must precede linked home roots');
 console.log('Layout: cycles, shared targets, disconnected pages, wrapping and empty graph passed.');
