@@ -1,7 +1,7 @@
 name: Validate and package HTS Pages
 on:
   push:
-    branches: [main]
+    branches: [main, feature/second-links-map]
   workflow_dispatch:
 jobs:
   validate:
@@ -27,8 +27,8 @@ jobs:
           cp hts-pages.php dist/hts-pages/
           cp -r assets includes dist/hts-pages/
           cd dist
-          zip -qr hts-pages-v0.6.3.zip hts-pages
+          zip -qr hts-pages-fixed.zip hts-pages
       - uses: actions/upload-artifact@v4
         with:
-          name: hts-pages-v0.6.3
+          name: hts-pages-fixed
           path: dist/hts-pages-v0.6.3.zip
