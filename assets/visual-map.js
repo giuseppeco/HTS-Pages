@@ -1,7 +1,7 @@
 (function(){
  'use strict';
  const host=document.getElementById('htsp-map-app'),L=window.HTSPMapLayout;
- const S={data:null,selected:0,root:0,zoom:1,search:'',status:'',focus:false,trash:false,model:null,dirty:false,busy:false,positions:null,panelMode:'properties',sequence:null};
+ const S={data:null,selected:0,root:0,zoom:1,search:'',status:'',focus:false,trash:false,showMenu:true,showEditorial:true,incomingFilter:'all',model:null,dirty:false,busy:false,positions:null,panelMode:'properties',sequence:null};
  const labels={post_title:'Titolo',post_name:'Slug',post_status:'Stato',post_author:'Autore',post_parent:'Genitore WordPress (gerarchia)',menu_order:'Ordine',post_excerpt:'Riassunto',map_description:'Descrizione unica sotto la miniatura',post_date:'Data pubblicazione locale',post_date_gmt:'Data pubblicazione UTC',comment_status:'Commenti',ping_status:'Ping',post_template:'Template',thumbnail_id:'ID immagine in evidenza',language:'Lingua',post_password:'Nuova password (vuoto = rimuovi)',post_content:'Contenuto completo: sorgente blocchi WordPress'};
  function el(tag,attrs={},...children){const n=document.createElement(tag);Object.entries(attrs).forEach(([k,v])=>{if(k==='class')n.className=v;else if(k.startsWith('on'))n.addEventListener(k.slice(2),v);else if(k in n&&!k.startsWith('aria-'))n[k]=v;else n.setAttribute(k,v);});children.flat().filter(c=>c!==null&&c!==undefined).forEach(c=>n.append(c.nodeType?c:document.createTextNode(String(c))));return n;}
  const btn=(label,action,cls='')=>el('button',{type:'button',class:'button '+cls,onclick:action},label);
@@ -18,11 +18,15 @@
   const root=el('select',{id:'htsp-map-root','aria-label':'Radice visuale'});root.addEventListener('change',()=>{S.root=Number(root.value);draw();fit();});
   const focus=el('input',{type:'checkbox',id:'htsp-map-focus',onchange:event=>{S.focus=event.target.checked;draw();fit();}});
   const trash=el('input',{type:'checkbox',id:'htsp-map-show-trash',onchange:async event=>{if(S.busy)return;S.trash=event.target.checked;await load();}});
+  const menuToggle=el('input',{type:'checkbox',checked:true,onchange:e=>{S.showMenu=e.target.checked;draw();}});
+  const editorialToggle=el('input',{type:'checkbox',checked:true,onchange:e=>{S.showEditorial=e.target.checked;draw();}});
+  const incomingFilter=el('select',{'aria-label':'Filtra per collegamenti entranti'},...[['all','Tutte le pagine'],['zero','Senza ingressi'],['some','Con almeno un ingresso']].map(([v,t])=>el('option',{value:v},t)));
+  incomingFilter.addEventListener('change',()=>{S.incomingFilter=incomingFilter.value;draw();fit();});
   const viewport=el('div',{id:'htsp-map-viewport',tabIndex:0,'aria-label':'Mappa delle pagine: scorrere per esplorare, usare Tab per selezionare una pagina'},el('div',{id:'htsp-map-space'},el('div',{id:'htsp-map-canvas'})));
   let drag=null;viewport.addEventListener('pointerdown',e=>{if(e.target.closest('.htsp-map-node')||e.button!==0)return;drag={x:e.clientX,y:e.clientY,left:viewport.scrollLeft,top:viewport.scrollTop};viewport.setPointerCapture(e.pointerId);viewport.classList.add('is-panning');});
   viewport.addEventListener('pointermove',e=>{if(drag){viewport.scrollLeft=drag.left+drag.x-e.clientX;viewport.scrollTop=drag.top+drag.y-e.clientY;}});
   const stop=()=>{drag=null;viewport.classList.remove('is-panning');};viewport.addEventListener('pointerup',stop);viewport.addEventListener('pointercancel',stop);
-  host.replaceChildren(el('div',{class:'htsp-map-toolbar'},btn('＋ Nuova pagina',()=>openNew(),'button-primary'),btn('↻ Aggiorna collegamenti',()=>load(true)),search,status,el('label',{},'Radice ',root),el('label',{},focus,' Solo selezionata e collegamenti diretti'),el('label',{},trash,' Includi cestino')),
+  host.replaceChildren(el('div',{class:'htsp-map-toolbar'},btn('＋ Nuova pagina',()=>openNew(),'button-primary'),btn('↻ Aggiorna collegamenti',()=>load(true)),search,status,el('label',{},menuToggle,' Ingressi da menu (verde)'),el('label',{},editorialToggle,' Ingressi da pagine (rosso)'),incomingFilter,el('label',{},'Radice ',root),el('label',{},focus,' Solo selezionata e collegamenti diretti'),el('label',{},trash,' Includi cestino')),
    el('div',{class:'htsp-map-toolbar'},btn('−',()=>zoom(S.zoom/1.2)),btn('＋',()=>zoom(S.zoom*1.2)),btn('Adatta',fit),el('span',{id:'htsp-map-zoom'},'100%'),el('span',{class:'htsp-map-legend'},'→ Direzione del link · Viola: entra nella selezionata · Corallo: esce dalla selezionata')),
    el('p',{id:'htsp-map-message',role:'status'}),el('p',{id:'htsp-map-scope',class:'htsp-map-scope'}),viewport,
    el('aside',{id:'htsp-map-drawer',class:'htsp-map-drawer',role:'dialog','aria-modal':'false','aria-labelledby':'htsp-map-drawer-title',hidden:true}));
@@ -41,7 +45,7 @@
  }
  function visible(){
   if(!S.data)return {nodes:[],edges:[]};
-  let nodes=S.data.nodes.filter(n=>(!S.status||n.status===S.status)&&(!S.search||[n.title,n.description,String(n.id)].join(' ').toLocaleLowerCase().includes(S.search.toLocaleLowerCase())));
+  let nodes=S.data.nodes.filter(n=>(S.incomingFilter==='all'||(S.incomingFilter==='zero'?(S.showMenu?n.menu_in:0)+(S.showEditorial?n.link_counts.in:0)===0:(S.showMenu?n.menu_in:0)+(S.showEditorial?n.link_counts.in:0)>0))&&(!S.status||n.status===S.status)&&(!S.search||[n.title,n.description,String(n.id)].join(' ').toLocaleLowerCase().includes(S.search.toLocaleLowerCase())));
   if(S.focus&&S.selected){const ids=new Set([S.selected]);S.data.edges.forEach(e=>{if(e.source===S.selected)ids.add(e.target);if(e.target===S.selected)ids.add(e.source);});nodes=nodes.filter(n=>ids.has(n.id));}
   const ids=new Set(nodes.map(n=>n.id));return {nodes,edges:S.data.edges.filter(e=>ids.has(e.source)&&ids.has(e.target))};
  }
@@ -62,9 +66,13 @@
    const caption=el('figcaption',{},node.description||node.title);const button=el('button',{type:'button',class:'htsp-map-node-open','aria-label':'Proprietà di '+node.title+' (#'+node.id+')',title:node.title+' · '+node.status,onclick:()=>openPage(node.id)});
    const actions=el('div',{class:'htsp-map-node-actions'},btn('Sequenza blocchi',()=>openStructure(node.id,'blocks')),btn('Percorsi ipotizzati',()=>openStructure(node.id,'paths')));
    const c=node.link_counts||{in:0,post:0,page:0,ext:0};
+   const sources=el('div',{class:'htsp-map-incoming-sources'});
+   if(S.showMenu&&node.menu_links?.length)sources.append(el('small',{style:'color:#198754'},'● Menu: '+node.menu_links.map(x=>x.menu).join(', ')));
+   if(S.showEditorial&&node.editorial_sources?.length)sources.append(el('small',{style:'color:#c13f3e'},'● Pagine: '+node.editorial_sources.length));
+
    const metrics=el('div',{class:'htsp-map-metrics'+(c.in===0?' has-zero-in':'')},
      ...[['IN',c.in],['POST',c.post],['PAGE',c.page],['EXT',c.ext]].map(([label,value])=>el('span',{title:label+' · link editoriali'},el('b',{},String(value)),el('small',{},label))));
-   figure.append(metrics,viewport,caption,button,actions);canvas.append(figure);
+   figure.append(metrics,viewport,caption,sources,button,actions);canvas.append(figure);
   }
   if(!view.nodes.length)canvas.append(el('p',{class:'htsp-map-empty'},'Nessuna pagina corrisponde ai filtri.'));
   canvas.style.width=S.positions.width+80+'px';canvas.style.height=S.positions.height+'px';applyScale();
