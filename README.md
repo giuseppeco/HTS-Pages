@@ -1,6 +1,6 @@
 # HTS Pages
 
-WordPress plugin v0.6.2 — spreadsheet-like page property editing in **WP Admin → HTS Pages**.
+WordPress plugin v0.6.3 — spreadsheet-like page property editing in **WP Admin → HTS Pages**.
 
 ## Visual page map (v0.6.0)
 Open **HTS Pages → Mappa pagine**. Each page appears once with its miniature, one description and two buttons:
@@ -48,3 +48,6 @@ Draft query permalinks no longer overwrite the canonical home URL in the graph i
 
 ## v0.6.2
 Trashed pages display their actual trash status in the disabled properties selector.
+
+## v0.6.3
+Four editorial link counters (incoming pages, outgoing posts, outgoing pages, external destinations) appear above each map preview. Pages with zero incoming links are prioritized as layout roots; each node's layout height is synchronized with the expanded counter panel. Note: counts are of distinct extracted URLs, not necessarily every repeated occurrence of an anchor in the content. The map is bounded by its 1,000-page scope.
