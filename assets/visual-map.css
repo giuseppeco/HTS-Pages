@@ -12,3 +12,5 @@
 .htsp-map-node-open{top:36px;height:212px}
 
 .htsp-map-incoming-sources{display:flex;flex-direction:column;gap:2px;position:relative;z-index:3;padding:2px 8px;background:#fff;font-size:10px;max-height:36px;overflow:auto}.htsp-map-incoming-sources small{font-size:10px;line-height:1.2}
+
+.htsp-map-metrics{grid-template-columns:repeat(5,1fr);height:42px}.htsp-map-metrics .metric-menu{background:#dcf5e5}.htsp-map-metrics .metric-menu b,.htsp-map-metrics .metric-menu small{color:#176b38}.htsp-map-metrics .metric-editorial{background:#ffe5e3}.htsp-map-metrics .metric-editorial b,.htsp-map-metrics .metric-editorial small{color:#ad2929}.htsp-map-drag-handle{position:absolute;right:4px;top:43px;z-index:8;background:#fff;border:1px solid #b8a9c7;border-radius:4px;padding:2px 6px;cursor:grab;touch-action:none;font-size:11px}.htsp-map-drag-handle:active{cursor:grabbing}.htsp-map-node-open{top:42px;height:206px}
