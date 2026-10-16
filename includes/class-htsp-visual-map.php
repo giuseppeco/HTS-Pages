@@ -100,7 +100,9 @@ final class HTSP_Visual_Map {
                 }
             }
         }
-        foreach($nodes as &$n){$n['link_counts']=$counts[$n['id']];}unset($n);
+        $menu_links=[];foreach(wp_get_nav_menus() as $menu){foreach((wp_get_nav_menu_items($menu->term_id)?:[]) as $item){$target=0;if($item->type==='post_type'&&$item->object==='page'){$target=(int)$item->object_id;}elseif(!empty($item->url)){$target=(int)url_to_postid($item->url);}if($target&&isset($counts[$target])){$menu_links[$target][]=['menu'=>$menu->name,'item'=>$item->title,'url'=>$item->url];}}}
+        $editorial_links=[];foreach($graph['edges'] as $edge){$editorial_links[$edge['target']][]=$edge['source'];}
+        foreach($nodes as &$n){$n['link_counts']=$counts[$n['id']];$n['menu_links']=$menu_links[$n['id']]??[];$n['editorial_sources']=$editorial_links[$n['id']]??[];$n['menu_in']=count($n['menu_links']);}unset($n);
         usort($nodes,static fn($a,$b)=>($a['link_counts']['in']<=>$b['link_counts']['in'])?:($a['id']<=>$b['id']));
         $result=['nodes'=>$nodes,'edges'=>$graph['edges'],'self_links'=>$graph['self_links'],'root'=>(int)get_option('page_on_front'),'permissions'=>['publish'=>current_user_can('publish_pages')],
             'limited'=>$limited,'limit'=>self::LIMIT,'scanned'=>count($posts),'generated_at'=>gmdate('c'),'scope'=>$scope,
