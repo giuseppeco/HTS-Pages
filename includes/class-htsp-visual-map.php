@@ -24,7 +24,7 @@ final class HTSP_Visual_Map {
     }
     public function screen():void{
         if(!current_user_can('edit_pages')){return;}
-        echo '<div class="wrap htsp-map"><h1>HTS · Mappa pagine <small style="font-size:13px;color:#4b286d">v0.6.4 · ingressi menu/editoriali</small></h1><p>I genitori e i figli rappresentano collegamenti reali tra pagine, non la gerarchia WordPress. Una pagina può avere più genitori e rimandi di ritorno.</p><div id="htsp-map-app"></div><noscript>Attivare JavaScript per visualizzare la mappa.</noscript></div>';
+        echo '<div class="wrap htsp-map"><h1>HTS · Mappa pagine <small style="font-size:13px;color:#4b286d">v0.6.5 · header/footer come nodi</small></h1><p>I genitori e i figli rappresentano collegamenti reali tra pagine, non la gerarchia WordPress. Una pagina può avere più genitori e rimandi di ritorno.</p><div id="htsp-map-app"></div><noscript>Attivare JavaScript per visualizzare la mappa.</noscript></div>';
     }
     public function invalidate():void{update_option('htsp_map_generation',wp_generate_uuid4(),false);}
     public function meta_changed($meta_id,$post_id,$key,$value=null):void{if(in_array($key,['_htsp_map_description','_thumbnail_id','_wp_page_template'],true)){$this->invalidate();}}
@@ -51,7 +51,7 @@ final class HTSP_Visual_Map {
         $description=(string)get_post_meta($p->ID,'_htsp_map_description',true);
         if($description===''){$description=$p->post_excerpt?:$p->post_title;}
         $preview=in_array($p->post_status,['draft','pending','future'],true)?get_preview_post_link($p):get_permalink($p);
-        return ['id'=>(int)$p->ID,'title'=>wp_strip_all_tags($p->post_title?:'#'.$p->ID),'description'=>self::short($description,220),
+        return ['kind'=>$p->post_type==='wp_template_part'?'template_part':'page','area'=>$p->post_type==='wp_template_part'?(string)get_post_meta($p->ID,'wp_template_part_area',true):'','edit_url'=>$p->post_type==='wp_template_part'?get_edit_post_link($p->ID,'raw'):'','id'=>(int)$p->ID,'title'=>wp_strip_all_tags($p->post_title?:'#'.$p->ID),'description'=>self::short($description,220),
             'status'=>$p->post_status,'url'=>get_permalink($p),'preview_url'=>$p->post_status==='trash'?'':$preview,
             'image'=>get_the_post_thumbnail_url($p,'medium')?:'','can_delete'=>current_user_can('delete_post',$p->ID)];
     }
@@ -65,10 +65,15 @@ final class HTSP_Visual_Map {
             $ids=array_fill_keys(array_column($cached['nodes'],'id'),true);$cached['edges']=array_values(array_filter($cached['edges'],static fn($e)=>isset($ids[$e['source']],$ids[$e['target']])));
             $cached['self_links']=array_intersect_key($cached['self_links'],$ids);$this->send($cached);return;
         }
-        $posts=get_posts(['post_type'=>'page','post_status'=>$include?HTS_Pages::statuses():['publish','private','draft','pending','future'],
+        $posts=get_posts(['post_type'=>['page','wp_template_part'],'post_status'=>$include?HTS_Pages::statuses():['publish','private','draft','pending','future'],
             'posts_per_page'=>self::LIMIT+1,'orderby'=>'ID','order'=>'ASC','suppress_filters'=>true]);
         $limited=count($posts)>self::LIMIT;$posts=array_slice($posts,0,self::LIMIT);$nodes=[];$links=[];$scope=[];$index=[];$byid=[];
         foreach($posts as $p){
+            if($p->post_type==='wp_template_part'){
+                $area=get_post_meta($p->ID,'wp_template_part_area',true);
+                $slug=strtolower($p->post_name.' '.$p->post_title);
+                if(!in_array($area,['header','footer'],true)&&!preg_match('/header|footer|intestazione|pi[eè] di pagina/i',$slug)){continue;}
+            }
             if(!current_user_can('edit_post',$p->ID)||!current_user_can('read_post',$p->ID)){continue;}
             $nodes[]=$this->node($p);$byid[$p->ID]=true;
             // Draft permalinks use ?page_id=ID; stripping that query would overwrite the home URL.
@@ -94,7 +99,7 @@ final class HTSP_Visual_Map {
                 if($host && strtolower($host)!==strtolower((string)$home_host)){$counts[$source]['ext']++;continue;}
                 $target=(int)$resolver($href);
                 if($target && get_post_type($target)==='post'){$counts[$source]['post']++;continue;}
-                if($target && get_post_type($target)==='page'){
+                if($target && in_array(get_post_type($target),['page','wp_template_part'],true)){
                     $counts[$source]['page']++;
                     if($target!==$source && isset($counts[$target]))$counts[$target]['in']++;
                 }
@@ -106,7 +111,7 @@ final class HTSP_Visual_Map {
         usort($nodes,static fn($a,$b)=>($a['link_counts']['in']<=>$b['link_counts']['in'])?:($a['id']<=>$b['id']));
         $result=['nodes'=>$nodes,'edges'=>$graph['edges'],'self_links'=>$graph['self_links'],'root'=>(int)get_option('page_on_front'),'permissions'=>['publish'=>current_user_can('publish_pages')],
             'limited'=>$limited,'limit'=>self::LIMIT,'scanned'=>count($posts),'generated_at'=>gmdate('c'),'scope'=>$scope,
-            'scope_note'=>'Link nel contenuto salvato e nei pattern/menu a blocchi referenziati. Esclusi menu e header/footer del template, Query Loop, shortcode e link generati da script. Gli autorimandi interni alla stessa pagina sono contati nelle proprietà, non disegnati come genitori.'];
+            'scope_note'=>'Header e footer dei temi a blocchi sono rappresentati come nodi (parti del template), con collegamenti in uscita. I collegamenti visualizzati provengono dal contenuto salvato e nei pattern/menu a blocchi referenziati. Esclusi menu e header/footer del template, Query Loop, shortcode e link generati da script. Gli autorimandi interni alla stessa pagina sono contati nelle proprietà, non disegnati come genitori.'];
         set_transient($key,$result,MINUTE_IN_SECONDS);$this->send($result);
     }
     public function endpoint_page():void{$this->guard();$id=absint($_POST['id']??0);$p=$this->readable_page($id);$this->send(is_wp_error($p)?$p:$this->properties($p));}
