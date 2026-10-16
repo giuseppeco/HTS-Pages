@@ -71,7 +71,9 @@ final class HTSP_Visual_Map {
         foreach($posts as $p){
             if(!current_user_can('edit_post',$p->ID)||!current_user_can('read_post',$p->ID)){continue;}
             $nodes[]=$this->node($p);$byid[$p->ID]=true;
-            $index[HTSP_Map_Links::canonical(HTSP_Map_Links::absolute(get_permalink($p),home_url('/')))]=$p->ID;
+            // Draft permalinks use ?page_id=ID; stripping that query would overwrite the home URL.
+            $permalink=HTSP_Map_Links::absolute(get_permalink($p),home_url('/'));$canonical=HTSP_Map_Links::permalink_key($permalink);
+            if($canonical!==''){$index[$canonical]=$p->ID;}
             if($p->post_status!=='trash'){$links[$p->ID]=HTSP_Map_Links::extract($p->post_content,get_permalink($p),$scope,[$p->ID]);}
         }
         $resolver=static function($href) use ($index,$byid){

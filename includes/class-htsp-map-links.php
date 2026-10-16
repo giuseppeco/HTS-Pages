@@ -19,6 +19,12 @@ final class HTSP_Map_Links {
     }
     public static function canonical(string $url): string {return rtrim(preg_replace('~[?#].*$~','',$url)??$url,'/');}
 
+    /** Query-ID permalinks have no canonical path identity: never index them as the homepage. */
+    public static function permalink_key(string $url):string {
+        $parts=wp_parse_url($url);parse_str($parts['query']??'',$query);
+        return isset($query['page_id'])||isset($query['p'])?'':self::canonical($url);
+    }
+
     public static function extract(string $content,string $base,array &$scope=[],array $visited=[],int $depth=0): array {
         $hrefs=[];
         if(class_exists('DOMDocument')){

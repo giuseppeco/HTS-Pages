@@ -32,3 +32,7 @@ ok(HTSP_Map_Links::absolute('javascript:alert(1)','https://example.com')==='','u
 $g=HTSP_Map_Links::build([['id'=>1],['id'=>2],['id'=>3]],[1=>['https://example.com/?page_id=2','https://example.com/?page_id=3','https://example.com/?page_id=99']],function($u){parse_str(parse_url($u,PHP_URL_QUERY),$q);return $q['page_id'];},'https://example.com');
 ok(count($g['edges'])===2,'query identity retained and hidden pages excluded');
 echo "Blocks and links: nested order, TO BE labels, journeys, stale references, safe URLs and permissions passed.\n";
+
+$index=[];foreach([1=>'https://example.com/',2=>'https://example.com/?page_id=2',3=>'https://example.com/?p=3'] as $id=>$url){$key=HTSP_Map_Links::permalink_key($url);if($key!==''){$index[$key]=$id;}}
+ok($index===['https://example.com'=>1],'draft query URLs cannot replace homepage index');
+echo "Regression: draft permalink indexing preserves homepage identity.\n";

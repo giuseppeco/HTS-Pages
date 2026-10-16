@@ -1,6 +1,6 @@
 # HTS Pages
 
-WordPress plugin v0.6.0 — spreadsheet-like page property editing in **WP Admin → HTS Pages**.
+WordPress plugin v0.6.2 — spreadsheet-like page property editing in **WP Admin → HTS Pages**.
 
 ## Visual page map (v0.6.0)
 Open **HTS Pages → Mappa pagine**. Each page appears once with its miniature, one description and two buttons:
@@ -42,3 +42,9 @@ The preview shows the public URL, not unpublished Gutenberg revisions. Draft/pri
 ## Link detection scope
 These columns are computed and read-only. They include internal hyperlinks found in saved post content, not external URLs, theme-rendered links, menu relationships, dynamically generated Query Loop results, redirects or links stored only in widget/plugin metadata. They do not map page parent relationships. The latest 3,000 content objects are scanned, so counts may be incomplete on larger sites. All target names/URLs shown are derived from WordPress post records; unpublished content visibility follows normal WordPress access controls.
 
+
+## v0.6.1
+Draft query permalinks no longer overwrite the canonical home URL in the graph index. Live CRUD and journey persistence are exercised with a dedicated disposable draft.
+
+## v0.6.2
+Trashed pages display their actual trash status in the disabled properties selector.

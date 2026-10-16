@@ -93,6 +93,7 @@
  function renderDrawer(){
   const m=S.model,creating=!m.node.id,drawer=$('htsp-map-drawer');drawer.hidden=false;
   const statuses={draft:'Bozza',pending:'In revisione',publish:'Pubblicata',private:'Privata',future:'Programmata'};
+  if(m.node.status==='trash'){statuses.trash='Nel cestino';}
   if(!m.can_publish){delete statuses.publish;delete statuses.private;delete statuses.future;if(m.fields.post_status)statuses[m.fields.post_status]=m.fields.post_status;}
   const basic=detail('Proprietà della pagina',formField('post_title',m.fields.post_title),formField('map_description',m.fields.map_description,{multiline:true,help:'Un solo testo sotto la miniatura. Se vuoto viene usato il riassunto o il titolo.'}),formField('post_name',m.fields.post_name),formField('post_status',m.fields.post_status,{choices:statuses}),formField('post_excerpt',m.fields.post_excerpt,{multiline:true}),formField('post_parent',m.fields.post_parent,{type:'number',help:'Gerarchia WordPress: non aggiunge né rimuove le frecce dei collegamenti.'}),formField('menu_order',m.fields.menu_order,{type:'number'}));
   if(!creating){
