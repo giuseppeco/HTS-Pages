@@ -10,3 +10,5 @@
 .htsp-map-metrics.has-zero-in span:first-child{background:#b32d2e}
 .htsp-map-metrics.has-zero-in span:first-child b,.htsp-map-metrics.has-zero-in span:first-child small{color:#fff}
 .htsp-map-node-open{top:36px;height:212px}
+
+.htsp-map-incoming-sources{display:flex;flex-direction:column;gap:2px;position:relative;z-index:3;padding:2px 8px;background:#fff;font-size:10px;max-height:36px;overflow:auto}.htsp-map-incoming-sources small{font-size:10px;line-height:1.2}
