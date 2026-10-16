@@ -83,6 +83,25 @@ final class HTSP_Visual_Map {
             return (int)($index[$canonical]??url_to_postid(preg_replace('/#.*$/','',$href)));
         };
         $graph=HTSP_Map_Links::build($nodes,$links,$resolver,home_url('/'));
+        // Editorial link counters: ignore navigation/template links and count each actual anchor.
+        $counts=[];foreach($nodes as $n){$counts[$n['id']]=['in'=>0,'post'=>0,'page'=>0,'ext'=>0];}
+        $home_host=wp_parse_url(home_url('/'),PHP_URL_HOST);
+        foreach($links as $source=>$hrefs){
+            if(!isset($counts[$source]))continue;
+            foreach($hrefs as $href){
+                if(!is_string($href))continue;
+                $host=wp_parse_url($href,PHP_URL_HOST);
+                if($host && strtolower($host)!==strtolower((string)$home_host)){$counts[$source]['ext']++;continue;}
+                $target=(int)$resolver($href);
+                if($target && get_post_type($target)==='post'){$counts[$source]['post']++;continue;}
+                if($target && get_post_type($target)==='page'){
+                    $counts[$source]['page']++;
+                    if($target!==$source && isset($counts[$target]))$counts[$target]['in']++;
+                }
+            }
+        }
+        foreach($nodes as &$n){$n['link_counts']=$counts[$n['id']];}unset($n);
+        usort($nodes,static fn($a,$b)=>($a['link_counts']['in']<=>$b['link_counts']['in'])?:($a['id']<=>$b['id']));
         $result=['nodes'=>$nodes,'edges'=>$graph['edges'],'self_links'=>$graph['self_links'],'root'=>(int)get_option('page_on_front'),'permissions'=>['publish'=>current_user_can('publish_pages')],
             'limited'=>$limited,'limit'=>self::LIMIT,'scanned'=>count($posts),'generated_at'=>gmdate('c'),'scope'=>$scope,
             'scope_note'=>'Link nel contenuto salvato e nei pattern/menu a blocchi referenziati. Esclusi menu e header/footer del template, Query Loop, shortcode e link generati da script. Gli autorimandi interni alla stessa pagina sono contati nelle proprietà, non disegnati come genitori.'];
