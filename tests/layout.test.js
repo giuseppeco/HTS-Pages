@@ -1,0 +1,12 @@
+const assert=require('node:assert/strict');
+const L=require('../assets/map-layout');
+const nodes=Array.from({length:31},(_,i)=>({id:i+1,title:'Page '+i}));
+const edges=nodes.slice(1,25).map(n=>({source:1,target:n.id})).concat([{source:3,target:1},{source:4,target:3},{source:30,target:31}]);
+const m=L.compute(nodes,edges,1);
+assert.equal(Object.keys(m.positions).length,31);
+assert(m.width<1400);
+for(const [id,a] of Object.entries(m.positions))for(const [other,b] of Object.entries(m.positions))if(id!==other)assert(a.x+a.width<=b.x||b.x+b.width<=a.x||a.y+a.height<=b.y||b.y+b.height<=a.y,'overlapping nodes');
+assert(m.backEdges>=1);
+assert(L.edgePath(m.positions[1],m.positions[3]).startsWith('M '));
+assert.equal(Object.keys(L.compute([],[],0).positions).length,0);
+console.log('Layout: cycles, shared targets, disconnected pages, wrapping and empty graph passed.');

@@ -1,0 +1,17 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),{JSDOM}=require('jsdom');
+const dom=new JSDOM('<div id="htsp-map-app"></div>',{runScripts:'outside-only',url:'https://example.com/wp-admin/'}),w=dom.window;
+w.HTSPMap={ajax:'/ajax',nonce:'test'};w.confirm=()=>true;w.IntersectionObserver=class{observe(){}unobserve(){}disconnect(){}};
+const block={id:'anchor:intro',title:'Introduzione',description:'Presenta il sito',function:'',depth:0,links:[{title:'Figlia',url:'https://example.com/child/'}]};
+let saved;
+w.fetch=async(_,init)=>{const q=new URLSearchParams(init.body),action=q.get('action');let data;
+if(action==='htsp_map_list')data={nodes:[{id:1,title:'Home',description:'Descrizione unica',status:'publish',preview_url:'https://example.com/'}],edges:[],root:1,scope:{},scope_note:'Scope',permissions:{publish:true},generated_at:'now'};
+else if(action==='htsp_map_sequence')data={page_id:1,title:'Home',token:'v1',outline:{blocks:[block],section_ids:[block.id],note:'Ordine salvato'},stored:false,paths:[{id:'reading',name:'Lettura',block_ids:[block.id]}]};
+else if(action==='htsp_map_paths'){saved=JSON.parse(q.get('payload'));data={page_id:1,title:'Home',token:'v2',outline:{blocks:[block],section_ids:[block.id],note:'Ordine salvato'},stored:true,paths:saved.items};}
+else throw Error(action);
+return {ok:true,json:async()=>({success:true,data})};};
+w.eval(fs.readFileSync(__dirname+'/../assets/map-layout.js','utf8'));w.eval(fs.readFileSync(__dirname+'/../assets/visual-map.js','utf8'));
+const tick=()=>new Promise(r=>setImmediate(r));const button=(name,scope=w.document)=>[...scope.querySelectorAll('button')].find(b=>b.textContent===name);
+(async()=>{await tick();const node=w.document.querySelector('figure');assert.equal(node.querySelectorAll('figcaption').length,1);assert(button('Sequenza blocchi',node));assert(button('Percorsi ipotizzati',node));
+button('Sequenza blocchi',node).click();await tick();assert(w.document.querySelector('.htsp-map-block-item').textContent.includes('Introduzione'));assert.equal(w.document.querySelector('.htsp-map-block-item a').href,block.links[0].url);
+const drawer=w.document.querySelector('aside');button('Percorsi ipotizzati',drawer).click();const name=drawer.querySelector('.htsp-map-path-item input');name.value='Percorso modificato';name.dispatchEvent(new w.Event('input'));button('Sequenza blocchi',drawer).click();button('Percorsi ipotizzati',drawer).click();assert.equal(drawer.querySelector('.htsp-map-path-item input').value,'Percorso modificato');assert(drawer.textContent.includes('Modifiche non salvate'));
+button('Salva percorsi',drawer).click();await tick();assert.equal(saved.items[0].name,'Percorso modificato');assert.equal(saved.token,'v1');assert(drawer.textContent.includes('Percorsi ipotizzati salvati'));console.log('UI: both node buttons, source outline, clickable links, tab changes, dirty state and path save passed.');dom.window.close();})().catch(e=>{console.error(e);process.exit(1);});
