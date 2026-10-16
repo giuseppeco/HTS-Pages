@@ -24,7 +24,7 @@ final class HTSP_Visual_Map {
     }
     public function screen():void{
         if(!current_user_can('edit_pages')){return;}
-        echo '<div class="wrap htsp-map"><h1>HTS · Mappa pagine</h1><p>I genitori e i figli rappresentano collegamenti reali tra pagine, non la gerarchia WordPress. Una pagina può avere più genitori e rimandi di ritorno.</p><div id="htsp-map-app"></div><noscript>Attivare JavaScript per visualizzare la mappa.</noscript></div>';
+        echo '<div class="wrap htsp-map"><h1>HTS · Mappa pagine <small style="font-size:13px;color:#4b286d">v0.6.4 · ingressi menu/editoriali</small></h1><p>I genitori e i figli rappresentano collegamenti reali tra pagine, non la gerarchia WordPress. Una pagina può avere più genitori e rimandi di ritorno.</p><div id="htsp-map-app"></div><noscript>Attivare JavaScript per visualizzare la mappa.</noscript></div>';
     }
     public function invalidate():void{update_option('htsp_map_generation',wp_generate_uuid4(),false);}
     public function meta_changed($meta_id,$post_id,$key,$value=null):void{if(in_array($key,['_htsp_map_description','_thumbnail_id','_wp_page_template'],true)){$this->invalidate();}}
