@@ -383,5 +383,4 @@ final class HTS_Pages {
 HTS_Pages::init();
 require_once __DIR__.'/includes/class-htsp-visual-map.php';
 new HTSP_Visual_Map(__FILE__);
-require_once __DIR__.'/includes/class-htsp-links-map.php';
 
