@@ -2,13 +2,13 @@
 /**
  * Plugin Name: HTS Pages
  * Description: Spreadsheet-style management of WordPress page properties without opening Gutenberg.
- * Version: 0.6.2
+ * Version: 0.6.3
  * Author: HiTechStories
  * Text Domain: hts-pages
  */
 if (!defined('ABSPATH')) exit;
 final class HTS_Pages {
- const VERSION='0.6.2';
+ const VERSION='0.6.3';
  const FIELDS=['post_title'=>'Title','post_name'=>'Slug','post_status'=>'Status','post_author'=>'Author ID','post_date'=>'Publication date','post_date_gmt'=>'Publication date GMT','post_parent'=>'Parent ID','menu_order'=>'Order','post_excerpt'=>'Excerpt','comment_status'=>'Comments','ping_status'=>'Pings','post_password'=>'Password','post_template'=>'Template','thumbnail_id'=>'Featured image ID','language'=>'Polylang language'];
  const SEO=['_yoast_wpseo_title','_yoast_wpseo_metadesc','_yoast_wpseo_focuskw','rank_math_title','rank_math_description','rank_math_focus_keyword'];
  static function init(){
