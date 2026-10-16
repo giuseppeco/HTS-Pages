@@ -61,7 +61,10 @@
    if(node.preview_url){const frame=el('iframe',{'data-src':node.preview_url,title:'',tabIndex:-1,'aria-hidden':'true',sandbox:'allow-same-origin',referrerPolicy:'same-origin'});viewport.append(frame);observer.observe(frame);}else viewport.append(el('span',{class:'htsp-map-no-preview'},'Pagina nel cestino'));
    const caption=el('figcaption',{},node.description||node.title);const button=el('button',{type:'button',class:'htsp-map-node-open','aria-label':'Proprietà di '+node.title+' (#'+node.id+')',title:node.title+' · '+node.status,onclick:()=>openPage(node.id)});
    const actions=el('div',{class:'htsp-map-node-actions'},btn('Sequenza blocchi',()=>openStructure(node.id,'blocks')),btn('Percorsi ipotizzati',()=>openStructure(node.id,'paths')));
-   figure.append(viewport,caption,button,actions);canvas.append(figure);
+   const c=node.link_counts||{in:0,post:0,page:0,ext:0};
+   const metrics=el('div',{class:'htsp-map-metrics'+(c.in===0?' has-zero-in':'')},
+     ...[['IN',c.in],['POST',c.post],['PAGE',c.page],['EXT',c.ext]].map(([label,value])=>el('span',{title:label+' · link editoriali'},el('b',{},String(value)),el('small',{},label))));
+   figure.append(metrics,viewport,caption,button,actions);canvas.append(figure);
   }
   if(!view.nodes.length)canvas.append(el('p',{class:'htsp-map-empty'},'Nessuna pagina corrisponde ai filtri.'));
   canvas.style.width=S.positions.width+80+'px';canvas.style.height=S.positions.height+'px';applyScale();
