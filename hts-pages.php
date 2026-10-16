@@ -23,7 +23,7 @@ final class HTS_Pages {
  static function guard(){ if(!current_user_can('edit_pages')) wp_send_json_error(['message'=>'Permission denied'],403); check_ajax_referer('htsp_nonce','nonce'); }
  static function statuses(){return ['publish','draft','pending','private','future','trash'];}
  static function columns(){ $cols=['preview'=>'Preview','dependencies'=>'Dependencies','ID'=>'ID','incoming'=>'Incoming links','outgoing'=>'Outgoing links','post_title'=>'Title','post_name'=>'Slug','post_status'=>'Status','permalink'=>'URL','post_author'=>'Author ID','post_date'=>'Published (local)','post_date_gmt'=>'Published (GMT)','post_modified'=>'Modified','post_modified_gmt'=>'Modified GMT','post_parent'=>'Parent ID','menu_order'=>'Order','post_excerpt'=>'Excerpt','comment_status'=>'Comments','ping_status'=>'Pings','post_password'=>'Password','post_template'=>'Template','thumbnail_id'=>'Image ID','language'=>'Language','guid'=>'GUID','post_type'=>'Type','post_mime_type'=>'MIME','comment_count'=>'Comments #','to_ping'=>'To ping','pinged'=>'Pinged']; foreach(get_object_taxonomies('page','objects') as $tax){$cols['tax:'.$tax->name]='Taxonomy: '.$tax->label;} return $cols; }
- static function link_graph(){
+ public static function link_graph(){
    // Cache for 15 minutes to avoid scanning the full site on every table interaction.
    $graph=get_transient('htsp_links_v3');
    if(is_array($graph))return $graph;
