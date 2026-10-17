@@ -51,3 +51,26 @@ Trashed pages display their actual trash status in the disabled properties selec
 
 ## v0.6.3
 Four editorial link counters (incoming pages, outgoing posts, outgoing pages, external destinations) appear above each map preview. Pages with zero incoming links are prioritized as layout roots; each node's layout height is synchronized with the expanded counter panel. Note: counts are of distinct extracted URLs, not necessarily every repeated occurrence of an anchor in the content. The map is bounded by its 1,000-page scope.
+
+
+## 0.7.0 — Header and Footer graph sources
+
+The page table and visual map now show read-only virtual Header (-1) and Footer (-2) nodes. Links from HTS Navigation primary, assigned classic menus and referenced active-theme template parts become incoming references on their destination pages. Disabled HTS groups/items and unmounted fixture models are excluded. Bilingual links to the same destination are deduplicated per shared source. No new WordPress pages are created.
+
+Header/Footer cannot be edited or deleted through page CRUD. Change their actual menus/template parts in the relevant editor. The map cache includes the shared-source URLs, so navigation changes do not wait for the old graph cache to expire. Page hierarchy remains independent from link direction.
+
+Limits: dynamic links generated only by Query Loops, arbitrary shortcodes, scripts or theme PHP outside referenced template parts are not inferred. Theme template variants are aggregated; a reference means it exists in a supported variant, not that it appears on every URL.
+
+Validation: PHP syntax on PHP 8.4 WASM; shell graph tests for enabled/disabled menus, virtual IDs, table/map consistency; layout/UI regression tests including read-only Header node. The existing blocks.test.php regression could not complete in PHP WASM because DOMDocument is unavailable; rerun it on native PHP with DOM before production qualification. Production installation and visual verification remain required.
+
+Upgrade the existing `hts-pages` plugin using the ZIP replacement flow in WordPress. HTS Bridge's ZIP installer deliberately refuses overwriting existing plugin directories, so it cannot perform this upgrade.
+
+
+## 0.7.1 — Clickable link counters
+
+IN, POST, PAGE, EXT and TOT are keyboard-accessible buttons. Their drawers show the actual source/destination object names and URLs. TOT also includes internal addresses not resolved to a page/post, so these links are not silently lost. The number is calculated from the same objects displayed by the drawer. Shared Header/Footer sources appear by name in incoming links. External objects use their host and URL; no remote page-title scraping is performed. Permissions are checked before exposing internal object names.
+
+
+## 0.7.2 — External IN and main MENU
+
+IN now means known external backlinks, using approved WordPress pingback/trackback records only (up to 3000 most recent records, deduplicated by source URL per target). These records are not a complete web backlink inventory and are not reverified by fetching remote pages. Zero means no recorded evidence in this source, not that a page has no backlinks. MENU counts distinct URLs in enabled HTS Navigation primary entries pointing to each page; unrelated header and footer references are excluded from MENU. Both counters are clickable. Internal incoming relationships remain in the graph and accessible via “Mostra riferimenti interni” in the IN drawer; no longer counted as external IN. Six visible counters: IN, MENU, POST, PAGE, EXT, TOT.

@@ -3,10 +3,12 @@
 
 /* Editorial link counters above page preview */
 .htsp-map-node{height:318px}
-.htsp-map-metrics{height:36px;display:grid;grid-template-columns:repeat(4,1fr);background:#f6f2f9;border-bottom:1px solid #ddd4e7;position:relative;z-index:1}
-.htsp-map-metrics span{display:flex;align-items:center;justify-content:center;gap:3px;flex-direction:column;line-height:1}
+.htsp-map-metrics{height:36px;display:grid;grid-template-columns:repeat(6,1fr);background:#f6f2f9;border-bottom:1px solid #ddd4e7;position:relative;z-index:1}
+.htsp-map-metrics button{display:flex;align-items:center;justify-content:center;gap:3px;flex-direction:column;line-height:1}
 .htsp-map-metrics b{font-size:15px;color:#4b286d}
 .htsp-map-metrics small{font-size:9px;letter-spacing:.04em;color:#625a69}
-.htsp-map-metrics.has-zero-in span:first-child{background:#b32d2e}
-.htsp-map-metrics.has-zero-in span:first-child b,.htsp-map-metrics.has-zero-in span:first-child small{color:#fff}
+.htsp-map-metrics.has-zero-in button:first-child{background:#b32d2e}
+.htsp-map-metrics.has-zero-in button:first-child b,.htsp-map-metrics.has-zero-in button:first-child small{color:#fff}
 .htsp-map-node-open{top:36px;height:212px}
+
+.htsp-map-metrics button{border:0;border-right:1px solid #ddd4e7;background:transparent;padding:3px;cursor:pointer;font:inherit}.htsp-map-metrics button:hover{background:#e9dff2}.htsp-map-metrics button:focus-visible{outline:2px solid #2271b1;outline-offset:-2px}.htsp-map-link-objects{list-style:disc;margin-left:20px}.htsp-map-link-objects li{padding:10px 0;border-bottom:1px solid #eee}.htsp-map-link-objects a{display:block;overflow-wrap:anywhere;margin:6px 0}
