@@ -60,7 +60,7 @@ final class HTSP_Visual_Map {
         $this->guard();$include=!empty($_POST['trash']);
         if(!empty($_POST['refresh'])){$this->invalidate();}
         $shell=HTSP_Shell_Links::collect();
-        $key='htsp_map_objects_'.md5(json_encode($shell).'|'.get_current_user_id().'|'.get_option('htsp_map_generation','0').'|'.(int)$include);
+        $key='htsp_map_backlinks_'.md5(json_encode($shell).'|'.get_current_user_id().'|'.get_option('htsp_map_generation','0').'|'.(int)$include);
         $cached=get_transient($key);
         if(is_array($cached)){
             $cached['nodes']=array_values(array_filter($cached['nodes'],static fn($n)=>HTSP_Shell_Links::is_virtual($n['id'])||(current_user_can('edit_post',$n['id'])&&current_user_can('read_post',$n['id']))));
@@ -93,7 +93,7 @@ final class HTSP_Visual_Map {
         $graph=HTSP_Map_Links::build($nodes,$links,$resolver,home_url('/'));
         // The visible numbers and drawers share the same destination lists.
         $counts=[];$objects=[];$node_index=[];
-        foreach($nodes as $n){$node_index[$n['id']]=$n;$objects[$n['id']]=['in'=>[],'post'=>[],'page'=>[],'ext'=>[],'total'=>[]];}
+        foreach($nodes as $n){$node_index[$n['id']]=$n;$objects[$n['id']]=['in'=>[],'menu'=>[],'internal'=>[],'post'=>[],'page'=>[],'ext'=>[],'total'=>[]];}
         $home_host=strtolower((string)wp_parse_url(home_url('/'),PHP_URL_HOST));
         foreach($links as $source=>$hrefs){
             if(!isset($objects[$source]))continue;
@@ -113,16 +113,21 @@ final class HTSP_Visual_Map {
         }
         foreach($graph['edges'] as $edge){
             $source=$node_index[$edge['source']];
-            $objects[$edge['target']]['in'][]=['id'=>$source['id'],'title'=>$source['title'],'url'=>$source['url'],'type'=>!empty($source['virtual'])?'site_shell':'page','virtual'=>!empty($source['virtual'])];
+            $objects[$edge['target']]['internal'][]=['id'=>$source['id'],'title'=>$source['title'],'url'=>$source['url'],'type'=>!empty($source['virtual'])?'site_shell':'page','virtual'=>!empty($source['virtual'])];
+        }
+        $known=HTSP_Shell_Links::backlinks(array_keys($node_index));
+        foreach($known as $target=>$entries)$objects[$target]['in']=$entries;
+        foreach(HTSP_Shell_Links::primary_links() as $entry){
+            $target=(int)$resolver($entry['url']);if(isset($objects[$target]))$objects[$target]['menu'][]=$entry;
         }
         foreach($nodes as &$n){
             $n['link_objects']=$objects[$n['id']];
             $n['link_counts']=array_map('count',$n['link_objects']);
         }unset($n);
-        usort($nodes,static fn($a,$b)=>($a['link_counts']['in']<=>$b['link_counts']['in'])?:($a['id']<=>$b['id']));
+        usort($nodes,static fn($a,$b)=>($a['link_counts']['internal']<=>$b['link_counts']['internal'])?:($a['id']<=>$b['id']));
         $result=['nodes'=>$nodes,'edges'=>$graph['edges'],'self_links'=>$graph['self_links'],'root'=>(int)get_option('page_on_front'),'permissions'=>['publish'=>current_user_can('publish_pages')],
             'limited'=>$limited,'limit'=>self::LIMIT,'scanned'=>count($posts),'generated_at'=>gmdate('c'),'scope'=>$scope,
-            'scope_note'=>'Link nei contenuti, nei pattern referenziati e nei nodi Header/Footer: HTS Navigation primary, menu classici assegnati e parti header/footer referenziate dai template del tema attivo. Esclusi Query Loop, shortcode e link generati da script. Gli autorimandi interni alla stessa pagina sono contati nelle proprietà, non disegnati come genitori.'];
+            'scope_note'=>'IN: backlink conosciuti da pingback/trackback approvati in WordPress (massimo 3000 segnalazioni; non verificati live). MENU: URL distinti del menu principale HTS Navigation. I rimandi interni restano nel grafo e nelle proprietà. Link nei contenuti, nei pattern referenziati e nei nodi Header/Footer: HTS Navigation primary, menu classici assegnati e parti header/footer referenziate dai template del tema attivo. Esclusi Query Loop, shortcode e link generati da script. Gli autorimandi interni alla stessa pagina sono contati nelle proprietà, non disegnati come genitori.'];
         set_transient($key,$result,MINUTE_IN_SECONDS);$this->send($result);
     }
     public function endpoint_page():void{$this->guard();$id=(int)($_POST['id']??0);$p=$this->readable_page($id);$this->send(is_wp_error($p)?$p:$this->properties($p));}

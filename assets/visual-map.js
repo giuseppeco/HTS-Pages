@@ -61,9 +61,9 @@
    if(node.preview_url){const frame=el('iframe',{'data-src':node.preview_url,title:'',tabIndex:-1,'aria-hidden':'true',sandbox:'allow-same-origin',referrerPolicy:'same-origin'});viewport.append(frame);observer.observe(frame);}else viewport.append(el('span',{class:'htsp-map-no-preview'},node.virtual?node.title:'Pagina nel cestino'));
    const caption=el('figcaption',{},node.description||node.title);const button=el('button',{type:'button',class:'htsp-map-node-open','aria-label':'Proprietà di '+node.title+' (#'+node.id+')',title:node.title+' · '+node.status,onclick:()=>openPage(node.id)});
    const actions=node.virtual?el('div',{class:'htsp-map-node-actions'},el('span',{},node.title+' · elemento condiviso')):el('div',{class:'htsp-map-node-actions'},btn('Sequenza blocchi',()=>openStructure(node.id,'blocks')),btn('Percorsi ipotizzati',()=>openStructure(node.id,'paths')));
-   const c=node.link_counts||{in:0,post:0,page:0,ext:0,total:0};
+   const c=node.link_counts||{in:0,menu:0,post:0,page:0,ext:0,total:0};
    const metrics=el('div',{class:'htsp-map-metrics'+(c.in===0?' has-zero-in':'')},
-     ...[['IN','in'],['POST','post'],['PAGE','page'],['EXT','ext'],['TOT','total']].map(([label,key])=>el('button',{type:'button',title:'Mostra '+label+' di '+node.title,'aria-label':label+': '+(c[key]||0)+' · '+node.title,onclick:event=>{event.stopPropagation();openLinkList(node.id,key);}},el('b',{},String(c[key]||0)),el('small',{},label))));
+     ...[['IN','in'],['MENU','menu'],['POST','post'],['PAGE','page'],['EXT','ext'],['TOT','total']].map(([label,key])=>el('button',{type:'button',title:'Mostra '+label+' di '+node.title,'aria-label':label+': '+(c[key]||0)+' · '+node.title,onclick:event=>{event.stopPropagation();openLinkList(node.id,key);}},el('b',{},String(c[key]||0)),el('small',{},label))));
    figure.append(metrics,viewport,caption,button,actions);canvas.append(figure);
   }
   if(!view.nodes.length)canvas.append(el('p',{class:'htsp-map-empty'},'Nessuna pagina corrisponde ai filtri.'));
@@ -76,9 +76,9 @@
  function openLinkList(id,key){
   if(S.busy||!confirmDiscard())return;
   const node=S.data.nodes.find(n=>n.id===id);if(!node)return;
-  const labels={in:'Collegamenti in ingresso',post:'Articoli puntati',page:'Pagine puntate',ext:'Collegamenti esterni',total:'Tutti i collegamenti in uscita'};
+  const labels={in:'Backlink esterni conosciuti',menu:'Rimandi dal menu principale',internal:'Riferimenti interni in ingresso',post:'Articoli puntati',page:'Pagine puntate',ext:'Collegamenti esterni',total:'Tutti i collegamenti in uscita'};
   let items=node.link_objects?.[key];
-  if(!Array.isArray(items)&&key==='in')items=S.data.edges.filter(e=>e.target===id).map(e=>S.data.nodes.find(n=>n.id===e.source)).filter(Boolean);
+  if(!Array.isArray(items)&&key==='internal')items=S.data.edges.filter(e=>e.target===id).map(e=>S.data.nodes.find(n=>n.id===e.source)).filter(Boolean);
   items=Array.isArray(items)?items:[];S.selected=id;S.dirty=false;draw();
   const drawer=$('htsp-map-drawer');drawer.hidden=false;
   const list=el('ul',{class:'htsp-map-link-objects'});
@@ -89,7 +89,7 @@
    if(S.data.nodes.some(n=>n.id===item.id))row.append(btn('Mostra nella mappa',()=>openPage(item.id)));
    list.append(row);
   });
-  drawer.replaceChildren(el('h2',{id:'htsp-map-drawer-title'},labels[key]+' · '+node.title),el('p',{},items.length+' oggetti'),items.length?list:el('p',{},'Nessun collegamento rilevato in questa categoria.'),btn('Chiudi',closeDrawer));
+  drawer.replaceChildren(el('h2',{id:'htsp-map-drawer-title'},labels[key]+' · '+node.title),el('p',{},items.length+' oggetti'),...(key==='in'?[el('p',{},'Fonte: pingback e trackback approvati registrati in WordPress, fino a 3000 segnalazioni. Non è un censimento completo del web e la presenza attuale del backlink non è verificata.')]:[]),items.length?list:el('p',{},'Nessun collegamento rilevato in questa categoria.'),...(key==='in'?[btn('Mostra riferimenti interni',()=>openLinkList(id,'internal'))]:[]),btn('Chiudi',closeDrawer));
  }
  async function openPage(id){
   const virtual=S.data?.nodes.find(n=>n.id===Number(id)&&n.virtual);

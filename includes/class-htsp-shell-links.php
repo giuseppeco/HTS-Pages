@@ -29,6 +29,31 @@ final class HTSP_Shell_Links {
         };
         $walk($model);return $out;
     }
+    /** Known records, not a crawl or a claim of live backlink verification. */
+    public static function backlinks(array $ids):array{
+        $out=[];$allowed=array_fill_keys(array_filter($ids,static fn($id)=>$id>0),true);
+        if(!$allowed||!function_exists('get_comments'))return $out;
+        $home=preg_replace('/^www\./','',strtolower((string)wp_parse_url(home_url('/'),PHP_URL_HOST)));
+        $comments=get_comments(['post__in'=>array_keys($allowed),'type__in'=>['pingback','trackback'],'status'=>'approve','number'=>3000,'orderby'=>'comment_ID','order'=>'DESC']);
+        foreach($comments as $comment){
+            $id=(int)$comment->comment_post_ID;if(!isset($allowed[$id])||!current_user_can('read_post',$id))continue;
+            $url=trim((string)$comment->comment_author_url);$parts=wp_parse_url($url);
+            if(!$parts||!in_array(strtolower($parts['scheme']??''),['http','https'],true)||empty($parts['host'])||isset($parts['user'])||isset($parts['pass']))continue;
+            $host=preg_replace('/^www\./','',strtolower($parts['host']));if($host===$home)continue;
+            $url=HTSP_Map_Links::absolute($url,home_url('/'));$key=preg_replace('/#.*$/','',$url);
+            $out[$id][$key]=['id'=>0,'title'=>wp_strip_all_tags($comment->comment_author?:$parts['host']),'url'=>$url,'type'=>'backlink','source'=>'WordPress '.$comment->comment_type,'verified_live'=>false];
+        }
+        foreach($out as &$entries)$entries=array_values($entries);unset($entries);return $out;
+    }
+    /** The main header menu only, excluding unrelated header/footer links. */
+    public static function primary_links():array{
+        if(!class_exists('HTS_Nav_Model')||!HTS_Nav_Model::exists('primary'))return [];
+        $out=[];foreach(self::model_links(HTS_Nav_Model::get('primary')) as $entry){
+            $key=$entry['url'];
+            if(!isset($out[$key]))$out[$key]=['id'=>0,'title'=>$entry['label']?:$entry['url'],'url'=>$entry['url'],'type'=>'menu','source'=>'HTS Navigation primary'];
+        }
+        return array_values($out);
+    }
     public static function collect():array{
         $links=[self::HEADER=>[],self::FOOTER=>[]];$scope=[];
         // Primary is the menu rendered by HTS Navigation; fixture/unmounted models are excluded.

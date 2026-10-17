@@ -37,3 +37,17 @@ check(isset($table['incoming'][2][-1])&&isset($table['incoming'][3][-2]),'table 
 check(count($table['outgoing'][-1])===3,'table and map have consistent outgoing destination counts');
 check(HTSP_Shell_Links::is_virtual(-1)&&HTSP_Shell_Links::is_virtual(-2)&&!HTSP_Shell_Links::is_virtual(1),'virtual IDs cannot alias real pages');
 check(isset($table['incoming'][4][-1])&&isset($table['incoming'][5][-2]),'nested header part inherits header area; footer template links included');
+
+function get_comments($args){
+ check($args['status']==='approve'&&$args['type__in']===['pingback','trackback'],'only approved pingback/trackback records requested');
+ return array_map(static fn($row)=>(object)$row,[
+ ['comment_post_ID'=>2,'comment_author_url'=>'https://other.example/story/#one','comment_author'=>'External story','comment_type'=>'pingback'],
+ ['comment_post_ID'=>2,'comment_author_url'=>'https://other.example/story/#two','comment_author'=>'External story','comment_type'=>'pingback'],
+ ['comment_post_ID'=>2,'comment_author_url'=>'https://www.example.com/page-1/','comment_author'=>'Local','comment_type'=>'trackback'],
+ ['comment_post_ID'=>2,'comment_author_url'=>'javascript:alert(1)','comment_author'=>'Unsafe','comment_type'=>'pingback'],
+ ['comment_post_ID'=>99,'comment_author_url'=>'https://outside.example/','comment_author'=>'Other page','comment_type'=>'pingback']]);
+}
+$known=HTSP_Shell_Links::backlinks([1,2]);
+check(count($known[2])===1&&$known[2][0]['title']==='External story'&&!$known[2][0]['verified_live'],'external backlinks deduplicated; local/unsafe/unrequested sources excluded; no live verification claimed');
+$primary=HTSP_Shell_Links::primary_links();
+check(count($primary)===2&&$primary[1]['title']==='Series','MENU uses enabled primary only, excludes footer and disabled entries');

@@ -3,7 +3,7 @@
 
 /* Editorial link counters above page preview */
 .htsp-map-node{height:318px}
-.htsp-map-metrics{height:36px;display:grid;grid-template-columns:repeat(5,1fr);background:#f6f2f9;border-bottom:1px solid #ddd4e7;position:relative;z-index:1}
+.htsp-map-metrics{height:36px;display:grid;grid-template-columns:repeat(6,1fr);background:#f6f2f9;border-bottom:1px solid #ddd4e7;position:relative;z-index:1}
 .htsp-map-metrics button{display:flex;align-items:center;justify-content:center;gap:3px;flex-direction:column;line-height:1}
 .htsp-map-metrics b{font-size:15px;color:#4b286d}
 .htsp-map-metrics small{font-size:9px;letter-spacing:.04em;color:#625a69}

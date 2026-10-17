@@ -69,3 +69,8 @@ Upgrade the existing `hts-pages` plugin using the ZIP replacement flow in WordPr
 ## 0.7.1 — Clickable link counters
 
 IN, POST, PAGE, EXT and TOT are keyboard-accessible buttons. Their drawers show the actual source/destination object names and URLs. TOT also includes internal addresses not resolved to a page/post, so these links are not silently lost. The number is calculated from the same objects displayed by the drawer. Shared Header/Footer sources appear by name in incoming links. External objects use their host and URL; no remote page-title scraping is performed. Permissions are checked before exposing internal object names.
+
+
+## 0.7.2 — External IN and main MENU
+
+IN now means known external backlinks, using approved WordPress pingback/trackback records only (up to 3000 most recent records, deduplicated by source URL per target). These records are not a complete web backlink inventory and are not reverified by fetching remote pages. Zero means no recorded evidence in this source, not that a page has no backlinks. MENU counts distinct URLs in enabled HTS Navigation primary entries pointing to each page; unrelated header and footer references are excluded from MENU. Both counters are clickable. Internal incoming relationships remain in the graph and accessible via “Mostra riferimenti interni” in the IN drawer; no longer counted as external IN. Six visible counters: IN, MENU, POST, PAGE, EXT, TOT.
