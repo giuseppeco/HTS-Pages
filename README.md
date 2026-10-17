@@ -64,3 +64,8 @@ Limits: dynamic links generated only by Query Loops, arbitrary shortcodes, scrip
 Validation: PHP syntax on PHP 8.4 WASM; shell graph tests for enabled/disabled menus, virtual IDs, table/map consistency; layout/UI regression tests including read-only Header node. The existing blocks.test.php regression could not complete in PHP WASM because DOMDocument is unavailable; rerun it on native PHP with DOM before production qualification. Production installation and visual verification remain required.
 
 Upgrade the existing `hts-pages` plugin using the ZIP replacement flow in WordPress. HTS Bridge's ZIP installer deliberately refuses overwriting existing plugin directories, so it cannot perform this upgrade.
+
+
+## 0.7.1 — Clickable link counters
+
+IN, POST, PAGE, EXT and TOT are keyboard-accessible buttons. Their drawers show the actual source/destination object names and URLs. TOT also includes internal addresses not resolved to a page/post, so these links are not silently lost. The number is calculated from the same objects displayed by the drawer. Shared Header/Footer sources appear by name in incoming links. External objects use their host and URL; no remote page-title scraping is performed. Permissions are checked before exposing internal object names.

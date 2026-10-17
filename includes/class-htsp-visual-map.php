@@ -60,10 +60,15 @@ final class HTSP_Visual_Map {
         $this->guard();$include=!empty($_POST['trash']);
         if(!empty($_POST['refresh'])){$this->invalidate();}
         $shell=HTSP_Shell_Links::collect();
-        $key='htsp_map_shell_'.md5(json_encode($shell).'|'.get_current_user_id().'|'.get_option('htsp_map_generation','0').'|'.(int)$include);
+        $key='htsp_map_objects_'.md5(json_encode($shell).'|'.get_current_user_id().'|'.get_option('htsp_map_generation','0').'|'.(int)$include);
         $cached=get_transient($key);
         if(is_array($cached)){
             $cached['nodes']=array_values(array_filter($cached['nodes'],static fn($n)=>HTSP_Shell_Links::is_virtual($n['id'])||(current_user_can('edit_post',$n['id'])&&current_user_can('read_post',$n['id']))));
+            foreach($cached['nodes'] as &$node){
+                if(!isset($node['link_objects']))continue;
+                foreach($node['link_objects'] as &$items)$items=array_values(array_filter($items,static fn($item)=>($item['id']??0)<=0||current_user_can('read_post',$item['id'])));unset($items);
+                $node['link_counts']=array_map('count',$node['link_objects']);
+            }unset($node);
             $ids=array_fill_keys(array_column($cached['nodes'],'id'),true);$cached['edges']=array_values(array_filter($cached['edges'],static fn($e)=>isset($ids[$e['source']],$ids[$e['target']])));
             $cached['self_links']=array_intersect_key($cached['self_links'],$ids);$this->send($cached);return;
         }
@@ -86,28 +91,34 @@ final class HTSP_Visual_Map {
             return (int)($index[$canonical]??url_to_postid(preg_replace('/#.*$/','',$href)));
         };
         $graph=HTSP_Map_Links::build($nodes,$links,$resolver,home_url('/'));
-        // Counters include each unique destination URL from content, header and footer.
-        $counts=[];foreach($nodes as $n){$counts[$n['id']]=['in'=>0,'post'=>0,'page'=>0,'ext'=>0];}
-        $home_host=wp_parse_url(home_url('/'),PHP_URL_HOST);
+        // The visible numbers and drawers share the same destination lists.
+        $counts=[];$objects=[];$node_index=[];
+        foreach($nodes as $n){$node_index[$n['id']]=$n;$objects[$n['id']]=['in'=>[],'post'=>[],'page'=>[],'ext'=>[],'total'=>[]];}
+        $home_host=strtolower((string)wp_parse_url(home_url('/'),PHP_URL_HOST));
         foreach($links as $source=>$hrefs){
-            if(!isset($counts[$source]))continue;
-            $destinations=[];
+            if(!isset($objects[$source]))continue;
+            $seen=[];
             foreach($hrefs as $href){
                 if(!is_string($href))continue;
-                $host=wp_parse_url($href,PHP_URL_HOST);
-                if($host && strtolower($host)!==strtolower((string)$home_host)){$counts[$source]['ext']++;continue;}
-                $target=(int)$resolver($href);
-                if($target&&isset($destinations[$target]))continue;
-                if($target)$destinations[$target]=true;
-                if($target && get_post_type($target)==='post'){$counts[$source]['post']++;continue;}
-                if($target && get_post_type($target)==='page'){
-                    $counts[$source]['page']++;
-                    // Incoming references are counted once per source/target edge below.
-                }
+                $host=strtolower((string)wp_parse_url($href,PHP_URL_HOST));
+                $external=$host!==''&&$host!==$home_host;
+                $target=$external?0:(int)$resolver($href);
+                if($target&&!current_user_can('read_post',$target))continue;
+                $key=$target?'id:'.$target:'url:'.$href;if(isset($seen[$key]))continue;$seen[$key]=true;
+                $type=$external?'ext':($target&&get_post_type($target)==='post'?'post':($target&&get_post_type($target)==='page'?'page':'other'));
+                $entry=['id'=>$target,'title'=>$target?wp_strip_all_tags(get_the_title($target)):($host?:$href),'url'=>$href,'type'=>$type];
+                $objects[$source]['total'][]=$entry;
+                if(isset($objects[$source][$type]))$objects[$source][$type][]=$entry;
             }
         }
-        foreach($graph['edges'] as $edge)if(isset($counts[$edge['target']]))$counts[$edge['target']]['in']++;
-        foreach($nodes as &$n){$n['link_counts']=$counts[$n['id']];}unset($n);
+        foreach($graph['edges'] as $edge){
+            $source=$node_index[$edge['source']];
+            $objects[$edge['target']]['in'][]=['id'=>$source['id'],'title'=>$source['title'],'url'=>$source['url'],'type'=>!empty($source['virtual'])?'site_shell':'page','virtual'=>!empty($source['virtual'])];
+        }
+        foreach($nodes as &$n){
+            $n['link_objects']=$objects[$n['id']];
+            $n['link_counts']=array_map('count',$n['link_objects']);
+        }unset($n);
         usort($nodes,static fn($a,$b)=>($a['link_counts']['in']<=>$b['link_counts']['in'])?:($a['id']<=>$b['id']));
         $result=['nodes'=>$nodes,'edges'=>$graph['edges'],'self_links'=>$graph['self_links'],'root'=>(int)get_option('page_on_front'),'permissions'=>['publish'=>current_user_can('publish_pages')],
             'limited'=>$limited,'limit'=>self::LIMIT,'scanned'=>count($posts),'generated_at'=>gmdate('c'),'scope'=>$scope,
