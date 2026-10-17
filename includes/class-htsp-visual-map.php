@@ -2,6 +2,7 @@
 if (!defined('ABSPATH')) { exit; }
 require_once __DIR__.'/class-htsp-map-links.php';
 require_once __DIR__.'/class-htsp-map-blocks.php';
+require_once __DIR__.'/class-htsp-shell-links.php';
 
 final class HTSP_Visual_Map {
     const LIMIT=1000;
@@ -34,7 +35,7 @@ final class HTSP_Visual_Map {
         nocache_headers();
     }
     private function readable_page(int $id){
-        $p=get_post($id);
+        $p=$id>0?get_post($id):null;
         if(!$p||$p->post_type!=='page'||!current_user_can('read_post',$id)||!current_user_can('edit_post',$id)){return new WP_Error('htsp_access','Pagina non disponibile o non modificabile.',['status'=>403]);}
         return $p;
     }
@@ -58,10 +59,11 @@ final class HTSP_Visual_Map {
     public function endpoint_list():void{
         $this->guard();$include=!empty($_POST['trash']);
         if(!empty($_POST['refresh'])){$this->invalidate();}
-        $key='htsp_map_'.md5(get_current_user_id().'|'.get_option('htsp_map_generation','0').'|'.(int)$include);
+        $shell=HTSP_Shell_Links::collect();
+        $key='htsp_map_shell_'.md5(json_encode($shell).'|'.get_current_user_id().'|'.get_option('htsp_map_generation','0').'|'.(int)$include);
         $cached=get_transient($key);
         if(is_array($cached)){
-            $cached['nodes']=array_values(array_filter($cached['nodes'],static fn($n)=>current_user_can('edit_post',$n['id'])&&current_user_can('read_post',$n['id'])));
+            $cached['nodes']=array_values(array_filter($cached['nodes'],static fn($n)=>HTSP_Shell_Links::is_virtual($n['id'])||(current_user_can('edit_post',$n['id'])&&current_user_can('read_post',$n['id']))));
             $ids=array_fill_keys(array_column($cached['nodes'],'id'),true);$cached['edges']=array_values(array_filter($cached['edges'],static fn($e)=>isset($ids[$e['source']],$ids[$e['target']])));
             $cached['self_links']=array_intersect_key($cached['self_links'],$ids);$this->send($cached);return;
         }
@@ -76,6 +78,7 @@ final class HTSP_Visual_Map {
             if($canonical!==''){$index[$canonical]=$p->ID;}
             if($p->post_status!=='trash'){$links[$p->ID]=HTSP_Map_Links::extract($p->post_content,get_permalink($p),$scope,[$p->ID]);}
         }
+        $nodes=array_merge($nodes,HTSP_Shell_Links::nodes());$links=$links+$shell;
         $resolver=static function($href) use ($index,$byid){
             $parts=wp_parse_url($href);parse_str($parts['query']??'',$query);
             if(isset($query['page_id'])||isset($query['p'])){$id=absint($query['page_id']??$query['p']);return isset($byid[$id])?$id:0;}
@@ -83,31 +86,35 @@ final class HTSP_Visual_Map {
             return (int)($index[$canonical]??url_to_postid(preg_replace('/#.*$/','',$href)));
         };
         $graph=HTSP_Map_Links::build($nodes,$links,$resolver,home_url('/'));
-        // Editorial link counters: ignore navigation/template links and count each actual anchor.
+        // Counters include each unique destination URL from content, header and footer.
         $counts=[];foreach($nodes as $n){$counts[$n['id']]=['in'=>0,'post'=>0,'page'=>0,'ext'=>0];}
         $home_host=wp_parse_url(home_url('/'),PHP_URL_HOST);
         foreach($links as $source=>$hrefs){
             if(!isset($counts[$source]))continue;
+            $destinations=[];
             foreach($hrefs as $href){
                 if(!is_string($href))continue;
                 $host=wp_parse_url($href,PHP_URL_HOST);
                 if($host && strtolower($host)!==strtolower((string)$home_host)){$counts[$source]['ext']++;continue;}
                 $target=(int)$resolver($href);
+                if($target&&isset($destinations[$target]))continue;
+                if($target)$destinations[$target]=true;
                 if($target && get_post_type($target)==='post'){$counts[$source]['post']++;continue;}
                 if($target && get_post_type($target)==='page'){
                     $counts[$source]['page']++;
-                    if($target!==$source && isset($counts[$target]))$counts[$target]['in']++;
+                    // Incoming references are counted once per source/target edge below.
                 }
             }
         }
+        foreach($graph['edges'] as $edge)if(isset($counts[$edge['target']]))$counts[$edge['target']]['in']++;
         foreach($nodes as &$n){$n['link_counts']=$counts[$n['id']];}unset($n);
         usort($nodes,static fn($a,$b)=>($a['link_counts']['in']<=>$b['link_counts']['in'])?:($a['id']<=>$b['id']));
         $result=['nodes'=>$nodes,'edges'=>$graph['edges'],'self_links'=>$graph['self_links'],'root'=>(int)get_option('page_on_front'),'permissions'=>['publish'=>current_user_can('publish_pages')],
             'limited'=>$limited,'limit'=>self::LIMIT,'scanned'=>count($posts),'generated_at'=>gmdate('c'),'scope'=>$scope,
-            'scope_note'=>'Link nel contenuto salvato e nei pattern/menu a blocchi referenziati. Esclusi menu e header/footer del template, Query Loop, shortcode e link generati da script. Gli autorimandi interni alla stessa pagina sono contati nelle proprietà, non disegnati come genitori.'];
+            'scope_note'=>'Link nei contenuti, nei pattern referenziati e nei nodi Header/Footer: HTS Navigation primary, menu classici assegnati e parti header/footer referenziate dai template del tema attivo. Esclusi Query Loop, shortcode e link generati da script. Gli autorimandi interni alla stessa pagina sono contati nelle proprietà, non disegnati come genitori.'];
         set_transient($key,$result,MINUTE_IN_SECONDS);$this->send($result);
     }
-    public function endpoint_page():void{$this->guard();$id=absint($_POST['id']??0);$p=$this->readable_page($id);$this->send(is_wp_error($p)?$p:$this->properties($p));}
+    public function endpoint_page():void{$this->guard();$id=(int)($_POST['id']??0);$p=$this->readable_page($id);$this->send(is_wp_error($p)?$p:$this->properties($p));}
     private function editable_meta($p):array{
         $safe=[];foreach(get_post_meta($p->ID) as $key=>$values){
             if(!HTS_Pages::allowed_meta($key)||!current_user_can('edit_post_meta',$p->ID,$key)){continue;}
@@ -217,7 +224,7 @@ final class HTSP_Visual_Map {
     }
     public function endpoint_write():void{
         $this->guard();$body=$this->request_body();if(is_wp_error($body)){$this->send($body);return;}
-        $id=absint($body['id']??0);
+        $id=(int)($body['id']??0);
         if(!$id){$type=get_post_type_object('page');if(!current_user_can($type->cap->create_posts)){$this->send($this->error('Non puoi creare pagine.',403));return;}}
         $token=$this->lock($id?:get_current_user_id()*-1);if(is_wp_error($token)){$this->send($token);return;}
         $result=null;
@@ -250,7 +257,7 @@ final class HTSP_Visual_Map {
     public function endpoint_restore():void{$this->change_trash(true);}
     private function change_trash(bool $restore):void{
         $this->guard();$body=$this->request_body();if(is_wp_error($body)){$this->send($body);return;}
-        $id=absint($body['id']??0);$post=$this->readable_page($id);
+        $id=(int)($body['id']??0);$post=$this->readable_page($id);
         if(is_wp_error($post)||!current_user_can('delete_post',$id)){$this->send($this->error('Non puoi rimuovere/ripristinare questa pagina.',403));return;}
         if(!$restore&&(!defined('EMPTY_TRASH_DAYS')||EMPTY_TRASH_DAYS<=0)){$this->send($this->error('Cestino disabilitato: la rimozione non è eseguita per evitare una cancellazione definitiva.'));return;}
         $lock=$this->lock($id);if(is_wp_error($lock)){$this->send($lock);return;}
@@ -276,10 +283,10 @@ final class HTSP_Visual_Map {
             'stale'=>is_array($stored)&&($stored['source_hash']??'')!==$outline['source_hash'],
             'token'=>$this->properties($post)['token']];
     }
-    public function endpoint_sequence():void{$this->guard();$post=$this->readable_page(absint($_POST['id']??0));$this->send(is_wp_error($post)?$post:$this->sequence($post));}
+    public function endpoint_sequence():void{$this->guard();$post=$this->readable_page((int)($_POST['id']??0));$this->send(is_wp_error($post)?$post:$this->sequence($post));}
     public function endpoint_paths():void{
         $this->guard();$body=$this->request_body();if(is_wp_error($body)){$this->send($body);return;}
-        $id=absint($body['id']??0);$post=$this->readable_page($id);if(is_wp_error($post)){$this->send($post);return;}
+        $id=(int)($body['id']??0);$post=$this->readable_page($id);if(is_wp_error($post)){$this->send($post);return;}
         $lock=$this->lock($id);if(is_wp_error($lock)){$this->send($lock);return;}
         try{
             $data=$this->sequence(get_post($id));

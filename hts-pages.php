@@ -2,13 +2,14 @@
 /**
  * Plugin Name: HTS Pages
  * Description: Spreadsheet-style management of WordPress page properties without opening Gutenberg.
- * Version: 0.6.3
+ * Version: 0.7.0
  * Author: HiTechStories
  * Text Domain: hts-pages
  */
 if (!defined('ABSPATH')) exit;
+require_once __DIR__.'/includes/class-htsp-shell-links.php';
 final class HTS_Pages {
- const VERSION='0.6.3';
+ const VERSION='0.7.0';
  const FIELDS=['post_title'=>'Title','post_name'=>'Slug','post_status'=>'Status','post_author'=>'Author ID','post_date'=>'Publication date','post_date_gmt'=>'Publication date GMT','post_parent'=>'Parent ID','menu_order'=>'Order','post_excerpt'=>'Excerpt','comment_status'=>'Comments','ping_status'=>'Pings','post_password'=>'Password','post_template'=>'Template','thumbnail_id'=>'Featured image ID','language'=>'Polylang language'];
  const SEO=['_yoast_wpseo_title','_yoast_wpseo_metadesc','_yoast_wpseo_focuskw','rank_math_title','rank_math_description','rank_math_focus_keyword'];
  static function init(){
@@ -26,7 +27,7 @@ final class HTS_Pages {
  static function link_graph(){
    // Cache for 15 minutes to avoid scanning the full site on every table interaction.
    $graph=get_transient('htsp_links_v3');
-   if(is_array($graph))return $graph;
+   if(is_array($graph))return HTSP_Shell_Links::merge_table($graph);
    $types=get_post_types(['public'=>true],'names');
    $sources=get_posts(['post_type'=>array_values($types),'post_status'=>['publish','private','draft','pending','future'],'numberposts'=>3000,'orderby'=>'ID','order'=>'DESC','suppress_filters'=>true]);
    $graph=['incoming'=>[],'outgoing'=>[],'scanned'=>count($sources),'limited'=>count($sources)===3000];
@@ -55,15 +56,20 @@ final class HTS_Pages {
      }
    }
    set_transient('htsp_links_v3',$graph,15*MINUTE_IN_SECONDS);
-   return $graph;
+   return HTSP_Shell_Links::merge_table($graph);
  }
  static function clear_link_graph(){delete_transient('htsp_links_v3');}
  static function graph_endpoint(){
    self::guard();
-   $id=absint($_POST['id']??0);$post=get_post($id);
+   $raw=(int)($_POST['id']??0);
+   if(HTSP_Shell_Links::is_virtual($raw)){
+     $graph=self::link_graph();$node=HTSP_Shell_Links::nodes()[$raw===-1?0:1];
+     wp_send_json_success(['id'=>$raw,'title'=>$node['title'],'type'=>'site_shell','status'=>'publish','url'=>home_url('/'),'incoming'=>[],'outgoing'=>array_values($graph['outgoing'][$raw]??[]),'scanned'=>$graph['scanned'],'limited'=>$graph['limited']]);return;
+   }
+   $id=absint($raw);$post=get_post($id);
    if(!$post||!current_user_can('edit_post',$id))wp_send_json_error(['message'=>'Object unavailable or inaccessible'],403);
    $graph=self::link_graph();
-   $filter=function($item){return isset($item['id']) && current_user_can('edit_post',(int)$item['id']);};
+   $filter=function($item){return isset($item['id']) && (HTSP_Shell_Links::is_virtual($item['id'])||current_user_can('edit_post',(int)$item['id']));};
    $incoming=array_values(array_filter(array_values($graph['incoming'][$id]??[]),$filter));
    $outgoing=array_values(array_filter(array_values($graph['outgoing'][$id]??[]),$filter));
    wp_send_json_success(['id'=>$id,'title'=>get_the_title($id),'type'=>$post->post_type,'status'=>$post->post_status,'url'=>get_permalink($id),'incoming'=>$incoming,'outgoing'=>$outgoing,'scanned'=>$graph['scanned'],'limited'=>$graph['limited']]);
@@ -75,6 +81,9 @@ final class HTS_Pages {
    $args=['post_type'=>'page','post_status'=>self::statuses(),'posts_per_page'=>$size,'paged'=>$page,'orderby'=>'ID','order'=>'DESC','s'=>sanitize_text_field(wp_unslash($_POST['search']??''))];
    if(!empty($_POST['status']) && in_array($_POST['status'],self::statuses(),true))$args['post_status']=sanitize_key($_POST['status']);
    $q=new WP_Query($args);$rows=[];$allMeta=[];$graph=self::link_graph();
+   if($page===1&&empty($_POST['status'])&&empty($_POST['search']))foreach(HTSP_Shell_Links::nodes() as $node){
+     $rows[]=['ID'=>$node['id'],'post_title'=>$node['title'],'post_type'=>'site_shell','post_status'=>'publish','permalink'=>$node['url'],'incoming'=>[],'outgoing'=>array_values($graph['outgoing'][$node['id']]??[]),'virtual'=>true];
+   }
    foreach($q->posts as $p){
      if(!current_user_can('edit_post',$p->ID))continue;
      $row=['incoming'=>array_values($graph['incoming'][$p->ID]??[]),'outgoing'=>array_values($graph['outgoing'][$p->ID]??[]),'ID'=>$p->ID,'permalink'=>get_permalink($p),'post_template'=>get_page_template_slug($p->ID)?:'','thumbnail_id'=>get_post_thumbnail_id($p->ID)?:'','language'=>function_exists('pll_get_post_language')?(pll_get_post_language($p->ID,'slug')?:''):''];
@@ -98,7 +107,7 @@ final class HTS_Pages {
    return $key[0]!=='_' && !in_array(strtolower($key),['password','token','secret','api_key','private_key'],true) && !preg_match('/(password|secret|token|credential|api.?key)/i',$key);
  }
  static function save(){
-   self::guard();$id=absint($_POST['id']??0);
+   self::guard();if((int)($_POST['id']??0)<0)wp_send_json_error(['message'=>'Shared header/footer is read-only'],400);$id=absint($_POST['id']??0);
    if(!$id||get_post_type($id)!=='page'||!current_user_can('edit_post',$id))wp_send_json_error(['message'=>'Cannot edit this page'],403);
    $field=sanitize_text_field(wp_unslash($_POST['field']??''));$raw=isset($_POST['value'])?wp_unslash($_POST['value']):'';
    if(!is_string($raw))wp_send_json_error(['message'=>'Invalid value'],400);
@@ -293,7 +302,7 @@ final class HTS_Pages {
             }else td.textContent='No preview';
             return;
           }
-          if(readonly.has(field)){td.className='htsp-readonly';if(field==='permalink'&&value){td.textContent='';const a=document.createElement('a');a.href=value;a.target='_blank';a.rel='noopener noreferrer';a.textContent='View ↗';td.append(a);}}
+          if(row.virtual||readonly.has(field)){td.className='htsp-readonly';if(field==='permalink'&&value){td.textContent='';const a=document.createElement('a');a.href=value;a.target='_blank';a.rel='noopener noreferrer';a.textContent='View ↗';td.append(a);}}
           else{td.className='htsp-edit';td.title='Click to edit • '+value;td.addEventListener('click',()=>edit(td,row,field));}
         });
       });
