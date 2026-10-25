@@ -10,3 +10,16 @@
 .htsp-map-metrics.has-zero-in span:first-child{background:#b32d2e}
 .htsp-map-metrics.has-zero-in span:first-child b,.htsp-map-metrics.has-zero-in span:first-child small{color:#fff}
 .htsp-map-node-open{top:36px;height:212px}
+.htsp-map-node-actions{gap:3px}
+.htsp-map-node-actions .button{line-height:19px;min-height:20px}
+.htsp-map-node figcaption strong,.htsp-map-node figcaption small{display:block;overflow-wrap:anywhere}
+.htsp-map-node figcaption small{font-size:11px;color:#655c6e}
+.htsp-map-node.is-editing{z-index:20;width:380px;height:auto;max-height:650px;overflow:auto;padding:16px;box-shadow:0 10px 45px #20132d55;border:2px solid #4b286d}
+.htsp-map-node.is-editing fieldset{border:0;margin:0;padding:0;min-width:0}
+.htsp-map-node.is-editing h3{margin:0 0 8px}
+.htsp-map-node.is-editing .button{margin:3px 5px 8px 0}
+.htsp-map-node.is-editing input,.htsp-map-node.is-editing select{width:100%;max-width:100%}
+.htsp-inline-menus{border-top:2px solid #f15b5a;margin-top:14px;padding-top:8px}
+.htsp-menu-row{border:1px solid #d5ccdf;background:#f8f5fb;padding:10px;margin:10px 0}
+.htsp-menu-row strong{display:block;margin-bottom:8px}
+.htsp-menu-row input,.htsp-menu-row select{margin-bottom:8px}

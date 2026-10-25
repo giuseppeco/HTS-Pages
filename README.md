@@ -51,3 +51,24 @@ Trashed pages display their actual trash status in the disabled properties selec
 
 ## v0.6.3
 Four editorial link counters (incoming pages, outgoing posts, outgoing pages, external destinations) appear above each map preview. Pages with zero incoming links are prioritized as layout roots; each node's layout height is synchronized with the expanded counter panel. Note: counts are of distinct extracted URLs, not necessarily every repeated occurrence of an anchor in the content. The map is bounded by its 1,000-page scope.
+
+
+## 0.7.0 — Gestione dalla mappa
+
+In **HTS Pages → Mappa pagine**, ogni nodo offre **Modifica qui**. Il pannello si apre sopra il nodo senza uscire dalla mappa:
+
+- titolo e slug;
+- lingua Polylang, se disponibile;
+- gruppo funzionale: landing, editoriale, servizio, legale, progetto interno;
+- categorie delle pagine e altre tassonomie già registrate;
+- etichette e dipendenze delle voci dei menu classici e dei menu a blocchi salvati come `wp_navigation`.
+
+Le categorie dedicate `htsp_page_category` sono separate dalle categorie degli articoli. Puoi crearle dal nodo e assegnarle con il selettore; il campo contiene gli slug separati da virgole, eliminabili per rimuovere un’assegnazione. Le pagine esistenti iniziano **non classificate**: il plugin non attribuisce una funzione per supposizione.
+
+I filtri **lingua + gruppo + categoria + menu + stato + ricerca** si combinano con AND. Sono disponibili anche “Lingua non assegnata”, “Non classificate” e “Senza voce di menu”; **Azzera filtri** ripristina la mappa completa. Le frecce rimangono collegamenti editoriali reali: il filtro menu e l’editor delle voci non trasformano il genitore WordPress in una dipendenza di navigazione.
+
+**Salvataggio:** “Salva dati pagina” invia soltanto i campi modificati. Il menu ha comandi separati “Salva voce”, “Aggiungi voce”, “Rimuovi voce”. Si modifica un ambito alla volta, per evitare di perdere cambiamenti non salvati. I menu richiedono `edit_theme_options`, la creazione delle categorie il permesso `manage_terms`. Ogni scrittura controlla nonce e permessi; le modifiche concorrenti richiedono una rilettura. Non è possibile spostare una voce sotto un proprio discendente; prima di rimuovere una voce con figli occorre spostarli.
+
+**Limiti:** i menu generati da plugin e i blocchi Navigation incorporati direttamente nei template, senza un’entità `wp_navigation`, richiedono il proprio editor. I menu a blocchi con contenitori non standard o riferimenti annidati vengono protetti da modifiche strutturali. La modifica dello slug può cambiare l’URL: non sono creati redirect né riscritti i link editoriali o gli URL personalizzati. Lingue e menu EN/IT restano indipendenti; il plugin non traduce automaticamente i nomi.
+
+**Verifica:** `node tests/layout.test.js`, `node tests/ui.test.js`, `node tests/management.test.js`; PHP lint e `php tests/menus.test.php`. Il test dei blocchi esistente richiede i tre file ufficiali del parser WordPress (vedi workflow CI). Il collaudo sul tema HTS installato resta distinto dai test automatici.
