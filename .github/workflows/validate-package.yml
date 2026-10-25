@@ -1,7 +1,8 @@
 name: Validate and package HTS Pages
 on:
   push:
-    branches: [main]
+    branches: [main, feat/visual-page-management]
+  pull_request:
   workflow_dispatch:
 jobs:
   validate:
@@ -13,6 +14,14 @@ jobs:
           php-version: '8.0'
       - name: PHP syntax
         run: find . -name '*.php' -not -path './.git/*' -print0 | xargs -0 -n1 php -l
+      - name: PHP regression tests
+        run: |
+          mkdir -p /tmp/htsp-wp-parser
+          for file in class-wp-block-parser-block.php class-wp-block-parser-frame.php class-wp-block-parser.php; do
+            curl -fsSL "https://raw.githubusercontent.com/WordPress/WordPress/6.8/wp-includes/$file" -o "/tmp/htsp-wp-parser/$file"
+          done
+          php tests/blocks.test.php /tmp/htsp-wp-parser
+          php tests/menus.test.php
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -21,14 +30,15 @@ jobs:
           npm install --no-save --package-lock=false jsdom@24
           node tests/layout.test.js
           node tests/ui.test.js
+          node tests/management.test.js
       - name: Build WordPress installation ZIP
         run: |
           mkdir -p dist/hts-pages
           cp hts-pages.php dist/hts-pages/
           cp -r assets includes dist/hts-pages/
           cd dist
-          zip -qr hts-pages-v0.6.3.zip hts-pages
+          zip -qr hts-pages-v0.7.0.zip hts-pages
       - uses: actions/upload-artifact@v4
         with:
-          name: hts-pages-v0.6.3
-          path: dist/hts-pages-v0.6.3.zip
+          name: hts-pages-v0.7.0
+          path: dist/hts-pages-v0.7.0.zip

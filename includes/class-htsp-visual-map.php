@@ -2,18 +2,24 @@
 if (!defined('ABSPATH')) { exit; }
 require_once __DIR__.'/class-htsp-map-links.php';
 require_once __DIR__.'/class-htsp-map-blocks.php';
+require_once __DIR__.'/class-htsp-map-menus.php';
 
 final class HTSP_Visual_Map {
     const LIMIT=1000;
     private string $file;
     public function __construct(string $file){
         $this->file=$file;
+        add_action('init',[$this,'register_groups']);
+        add_action('set_object_terms',[$this,'invalidate']);
+        add_action('wp_update_nav_menu',[$this,'invalidate']);
         add_action('admin_menu',[$this,'menu']);add_action('admin_enqueue_scripts',[$this,'assets']);
-        foreach(['list','page','write','trash','restore','sequence','paths'] as $action){add_action('wp_ajax_htsp_map_'.$action,[$this,'endpoint_'.$action]);}
+        foreach(['list','page','write','trash','restore','sequence','paths','menus','category'] as $action){add_action('wp_ajax_htsp_map_'.$action,[$this,'endpoint_'.$action]);}
         add_action('save_post',[$this,'invalidate']);add_action('deleted_post',[$this,'invalidate']);
         foreach(['added_post_meta','updated_post_meta','deleted_post_meta'] as $hook){add_action($hook,[$this,'meta_changed'],10,4);}
         add_action('update_option_page_on_front',[$this,'invalidate']);add_action('update_option_permalink_structure',[$this,'invalidate']);
     }
+    public const GROUPS=[''=>'Non classificata','landing'=>'Landing page','editorial'=>'Editoriale','service'=>'Servizio del sito','legal'=>'Legale','project'=>'Progetto interno'];
+    public function register_groups():void{register_taxonomy('htsp_page_category',['page'],['label'=>'Categorie delle pagine','public'=>false,'show_ui'=>true,'show_admin_column'=>true,'hierarchical'=>true,'show_in_rest'=>true,'rewrite'=>false]);}
     public function menu():void{add_submenu_page('hts-pages','Mappa pagine','Mappa pagine','edit_pages','hts-pages-map',[$this,'screen']);}
     public function assets(string $hook):void{
         if($hook!=='hts-pages_page_hts-pages-map'){return;}
@@ -27,7 +33,7 @@ final class HTSP_Visual_Map {
         echo '<div class="wrap htsp-map"><h1>HTS · Mappa pagine</h1><p>I genitori e i figli rappresentano collegamenti reali tra pagine, non la gerarchia WordPress. Una pagina può avere più genitori e rimandi di ritorno.</p><div id="htsp-map-app"></div><noscript>Attivare JavaScript per visualizzare la mappa.</noscript></div>';
     }
     public function invalidate():void{update_option('htsp_map_generation',wp_generate_uuid4(),false);}
-    public function meta_changed($meta_id,$post_id,$key,$value=null):void{if(in_array($key,['_htsp_map_description','_thumbnail_id','_wp_page_template'],true)){$this->invalidate();}}
+    public function meta_changed($meta_id,$post_id,$key,$value=null):void{if(in_array($key,['_htsp_map_description','_htsp_page_group','_thumbnail_id','_wp_page_template'],true)){$this->invalidate();}}
     private function guard():void{
         if(!current_user_can('edit_pages')){wp_send_json_error(['message'=>'Non hai il permesso di gestire le pagine.'],403);}
         check_ajax_referer('htsp_map_nonce','nonce');
@@ -51,7 +57,9 @@ final class HTSP_Visual_Map {
         $description=(string)get_post_meta($p->ID,'_htsp_map_description',true);
         if($description===''){$description=$p->post_excerpt?:$p->post_title;}
         $preview=in_array($p->post_status,['draft','pending','future'],true)?get_preview_post_link($p):get_permalink($p);
-        return ['id'=>(int)$p->ID,'title'=>wp_strip_all_tags($p->post_title?:'#'.$p->ID),'description'=>self::short($description,220),
+        $categories=wp_get_object_terms($p->ID,'htsp_page_category',['fields'=>'slugs']);
+        $menus=HTSP_Map_Menus::public_snapshot((int)$p->ID);$refs=[];foreach($menus['menus'] as $menu){foreach($menu['items'] as $item){if($item['current'])$refs[]=['menu'=>$menu['key'],'menu_label'=>$menu['label'],'label'=>$item['label']];}}
+        return ['slug'=>$p->post_name,'language'=>function_exists('pll_get_post_language')?(string)pll_get_post_language($p->ID,'slug'):'','group'=>(string)get_post_meta($p->ID,'_htsp_page_group',true),'categories'=>is_wp_error($categories)?[]:$categories,'menus'=>$refs,'id'=>(int)$p->ID,'title'=>wp_strip_all_tags($p->post_title?:'#'.$p->ID),'description'=>self::short($description,220),
             'status'=>$p->post_status,'url'=>get_permalink($p),'preview_url'=>$p->post_status==='trash'?'':$preview,
             'image'=>get_the_post_thumbnail_url($p,'medium')?:'','can_delete'=>current_user_can('delete_post',$p->ID)];
     }
@@ -103,7 +111,7 @@ final class HTSP_Visual_Map {
         foreach($nodes as &$n){$n['link_counts']=$counts[$n['id']];}unset($n);
         usort($nodes,static fn($a,$b)=>($a['link_counts']['in']<=>$b['link_counts']['in'])?:($a['id']<=>$b['id']));
         $result=['nodes'=>$nodes,'edges'=>$graph['edges'],'self_links'=>$graph['self_links'],'root'=>(int)get_option('page_on_front'),'permissions'=>['publish'=>current_user_can('publish_pages')],
-            'limited'=>$limited,'limit'=>self::LIMIT,'scanned'=>count($posts),'generated_at'=>gmdate('c'),'scope'=>$scope,
+            'groups'=>self::GROUPS,'categories'=>get_terms(['taxonomy'=>'htsp_page_category','hide_empty'=>false]),'limited'=>$limited,'limit'=>self::LIMIT,'scanned'=>count($posts),'generated_at'=>gmdate('c'),'scope'=>$scope,
             'scope_note'=>'Link nel contenuto salvato e nei pattern/menu a blocchi referenziati. Esclusi menu e header/footer del template, Query Loop, shortcode e link generati da script. Gli autorimandi interni alla stessa pagina sono contati nelle proprietà, non disegnati come genitori.'];
         set_transient($key,$result,MINUTE_IN_SECONDS);$this->send($result);
     }
@@ -117,6 +125,7 @@ final class HTSP_Visual_Map {
     private function properties($p):array{
         $fields=[];
         foreach(['post_title','post_name','post_status','post_author','post_parent','menu_order','post_excerpt','post_date','post_date_gmt','comment_status','ping_status','post_content'] as $field){$fields[$field]=(string)$p->$field;}
+        $fields['page_group']=(string)get_post_meta($p->ID,'_htsp_page_group',true);
         $fields['map_description']=(string)get_post_meta($p->ID,'_htsp_map_description',true);
         $fields['post_template']=(string)get_page_template_slug($p->ID);$fields['thumbnail_id']=(string)(get_post_thumbnail_id($p->ID)?:'');
         $fields['language']=function_exists('pll_get_post_language')?(string)pll_get_post_language($p->ID,'slug'):'';
@@ -130,7 +139,7 @@ final class HTSP_Visual_Map {
         $templates=['default'=>'Predefinito'];foreach(wp_get_theme()->get_page_templates($p) as $slug=>$label){$templates[$slug]=$label;}
         $token=hash('sha256',wp_json_encode([$fields,$meta,$tax,$p->post_password,$system,get_post_meta($p->ID,'_htsp_map_paths_v1',true)]));
         return ['node'=>$this->node($p),'fields'=>$fields,'system'=>$system,'meta'=>$meta,'taxonomies'=>$tax,'token'=>$token,
-            'templates'=>$templates,'languages'=>function_exists('pll_languages_list')?pll_languages_list(['fields'=>'slug']):[],
+            'groups'=>self::GROUPS,'menus'=>HTSP_Map_Menus::public_snapshot((int)$p->ID),'templates'=>$templates,'languages'=>function_exists('pll_languages_list')?pll_languages_list(['fields'=>'slug']):[],
             'authors'=>array_map(static fn($u)=>['id'=>$u->ID,'name'=>$u->display_name],get_users(['who'=>'authors','fields'=>['ID','display_name'],'number'=>300])),
             'can_publish'=>current_user_can('publish_pages'),'can_author'=>current_user_can('edit_others_pages'),
             'edit_url'=>get_edit_post_link($p->ID,'raw'),'can_restore'=>$p->post_status==='trash'&&current_user_can('delete_post',$p->ID)];
@@ -156,7 +165,7 @@ final class HTSP_Visual_Map {
     public function validate(array $body,$post){
         $creating=!$post;$id=$post?(int)$post->ID:0;$fields=$body['fields']??[];
         if(!is_array($fields)||!is_array($body['tax']??[])||!is_array($body['meta']??[])){return $this->error('Proprietà non valide.');}
-        $allowed=['post_title','post_name','post_status','post_author','post_parent','menu_order','post_excerpt','post_date','post_date_gmt','comment_status','ping_status','post_content','map_description','post_template','thumbnail_id','language','post_password'];
+        $allowed=['post_title','post_name','post_status','post_author','post_parent','menu_order','post_excerpt','post_date','post_date_gmt','comment_status','ping_status','post_content','map_description','page_group','post_template','thumbnail_id','language','post_password'];
         $out=['post'=>[],'extras'=>[],'tax'=>[],'meta'=>[]];
         foreach($fields as $key=>$raw){
             if(!in_array($key,$allowed,true)||!is_string($raw)){return $this->error('Proprietà non modificabile: '.$key);}
@@ -189,6 +198,7 @@ final class HTSP_Visual_Map {
                 case 'language':
                     if(!function_exists('pll_set_post_language')||!in_array($raw,pll_languages_list(['fields'=>'slug']),true)){return $this->error('Lingua Polylang non disponibile.');}
                     $out['extras'][$key]=$raw;continue 2;
+                case 'page_group':if(!array_key_exists($raw,self::GROUPS)){return $this->error('Gruppo pagina non valido.');}$out['extras'][$key]=$raw;continue 2;
                 case 'map_description':$out['extras'][$key]=sanitize_textarea_field($raw);continue 2;
                 case 'post_name':$raw=sanitize_title($raw);break;
                 case 'post_title':case 'post_password':$raw=sanitize_text_field($raw);break;
@@ -236,6 +246,7 @@ final class HTSP_Visual_Map {
         try{
             foreach($change['extras'] as $key=>$value){
                 if($key==='post_template'){update_post_meta($id,'_wp_page_template',wp_slash($value));}
+                elseif($key==='page_group'){update_post_meta($id,'_htsp_page_group',$value);}
                 elseif($key==='map_description'){update_post_meta($id,'_htsp_map_description',wp_slash($value));}
                 elseif($key==='thumbnail_id'){if($value){set_post_thumbnail($id,$value);}else{delete_post_thumbnail($id);}}
                 elseif($key==='language'){pll_set_post_language($id,$value);}
@@ -245,6 +256,20 @@ final class HTSP_Visual_Map {
         }catch(Throwable $e){$this->invalidate();return $this->error('Contenuto salvato, ma una proprietà aggiuntiva non è stata aggiornata: '.$e->getMessage().'. Ricaricare per vedere lo stato effettivo.',500);}
         $this->invalidate();HTS_Pages::clear_link_graph();clean_post_cache($id);
         return ['message'=>'Pagina salvata. I collegamenti sono ricalcolati dal contenuto reale.','page'=>$this->properties(get_post($id))];
+    }
+    public function endpoint_category():void{
+        $this->guard();$tax=get_taxonomy('htsp_page_category');
+        if(!$tax||!current_user_can($tax->cap->manage_terms)){$this->send($this->error('Non puoi creare categorie.',403));return;}
+        $name=sanitize_text_field(wp_unslash($_POST['name']??''));
+        if($name===''||strlen($name)>200){$this->send($this->error('Nome categoria non valido.'));return;}
+        $result=wp_insert_term($name,'htsp_page_category');$this->invalidate();$this->send($result);
+    }
+    public function endpoint_menus():void{
+        $this->guard();$body=$this->request_body();if(is_wp_error($body)){$this->send($body);return;}
+        $id=absint($body['id']??0);$page=$this->readable_page($id);if(is_wp_error($page)){$this->send($page);return;}
+        $lock=$this->lock(-2147483000);if(is_wp_error($lock)){$this->send($lock);return;}
+        try{$result=HTSP_Map_Menus::change($id,$body);$this->invalidate();}finally{$this->unlock(-2147483000,$lock);}
+        $this->send($result);
     }
     public function endpoint_trash():void{$this->change_trash(false);}
     public function endpoint_restore():void{$this->change_trash(true);}

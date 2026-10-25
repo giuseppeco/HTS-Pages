@@ -1,20 +1,21 @@
 (function(){
  'use strict';
  const host=document.getElementById('htsp-map-app'),L=window.HTSPMapLayout;
- const S={data:null,selected:0,root:0,zoom:1,search:'',status:'',focus:false,trash:false,model:null,dirty:false,busy:false,positions:null,panelMode:'properties',sequence:null};
+ const S={data:null,selected:0,root:0,zoom:1,search:'',status:'',language:'',group:'',category:'',menu:'',focus:false,trash:false,model:null,dirty:false,menuDirty:false,busy:false,positions:null,panelMode:'properties',sequence:null};
  const labels={post_title:'Titolo',post_name:'Slug',post_status:'Stato',post_author:'Autore',post_parent:'Genitore WordPress (gerarchia)',menu_order:'Ordine',post_excerpt:'Riassunto',map_description:'Descrizione unica sotto la miniatura',post_date:'Data pubblicazione locale',post_date_gmt:'Data pubblicazione UTC',comment_status:'Commenti',ping_status:'Ping',post_template:'Template',thumbnail_id:'ID immagine in evidenza',language:'Lingua',post_password:'Nuova password (vuoto = rimuovi)',post_content:'Contenuto completo: sorgente blocchi WordPress'};
  function el(tag,attrs={},...children){const n=document.createElement(tag);Object.entries(attrs).forEach(([k,v])=>{if(k==='class')n.className=v;else if(k.startsWith('on'))n.addEventListener(k.slice(2),v);else if(k in n&&!k.startsWith('aria-'))n[k]=v;else n.setAttribute(k,v);});children.flat().filter(c=>c!==null&&c!==undefined).forEach(c=>n.append(c.nodeType?c:document.createTextNode(String(c))));return n;}
  const btn=(label,action,cls='')=>el('button',{type:'button',class:'button '+cls,onclick:action},label);
  const $=id=>document.getElementById(id);
  async function api(action,fields={}){const response=await fetch(HTSPMap.ajax,{method:'POST',cache:'no-store',credentials:'same-origin',body:new URLSearchParams({action:'htsp_map_'+action,nonce:HTSPMap.nonce,...fields})});let json;try{json=await response.json();}catch(e){throw Error('Risposta non leggibile. Ricaricare per verificare lo stato prima di riprovare una modifica.');}if(!response.ok||!json.success)throw Error(json.data?.message||'Operazione non riuscita.');return json.data;}
  function say(message,error=false){const n=$('htsp-map-message');if(n){n.textContent=message;n.classList.toggle('is-error',error);}}
- function setBusy(value){S.busy=value;host.setAttribute('aria-busy',String(value));host.querySelectorAll('[data-lock]').forEach(n=>{n.disabled=value||n.dataset.permanentDisabled==='1';});const form=$('htsp-map-fields');if(form)form.disabled=value||(S.panelMode==='properties'&&S.model?.node.status==='trash');}
- function confirmDiscard(){return !S.dirty||window.confirm('Scartare le modifiche non ancora salvate?');}
+ function setBusy(value){S.busy=value;host.setAttribute('aria-busy',String(value));host.querySelectorAll('[data-lock]').forEach(n=>{n.disabled=value||n.dataset.permanentDisabled==='1';});const form=$('htsp-map-fields');if(form)form.disabled=value||(S.menuDirty&&!!host.querySelector('.is-editing'))||(S.panelMode==='properties'&&S.model?.node.status==='trash');}
+ function confirmDiscard(){return !(S.dirty||S.menuDirty)||window.confirm('Scartare le modifiche non ancora salvate?');}
  function shell(){
   const search=el('input',{id:'htsp-map-search',type:'search',placeholder:'Cerca titolo o descrizione…','aria-label':'Cerca pagine'});
   search.addEventListener('input',()=>{S.search=search.value;draw();});
   const status=el('select',{id:'htsp-map-status','aria-label':'Filtra stato'},el('option',{value:''},'Tutti gli stati'),...['publish','private','draft','pending','future','trash'].map(s=>el('option',{value:s},s)));
   status.addEventListener('change',()=>{S.status=status.value;draw();});
+  const filters=['language','group','category','menu'].map(key=>{const select=el('select',{id:'htsp-map-'+key,'aria-label':'Filtra '+({language:'lingua',group:'gruppo',category:'categoria',menu:'menu'}[key])});select.addEventListener('change',()=>{S[key]=select.value;draw();});return select;});
   const root=el('select',{id:'htsp-map-root','aria-label':'Radice visuale'});root.addEventListener('change',()=>{S.root=Number(root.value);draw();fit();});
   const focus=el('input',{type:'checkbox',id:'htsp-map-focus',onchange:event=>{S.focus=event.target.checked;draw();fit();}});
   const trash=el('input',{type:'checkbox',id:'htsp-map-show-trash',onchange:async event=>{if(S.busy)return;S.trash=event.target.checked;await load();}});
@@ -22,7 +23,7 @@
   let drag=null;viewport.addEventListener('pointerdown',e=>{if(e.target.closest('.htsp-map-node')||e.button!==0)return;drag={x:e.clientX,y:e.clientY,left:viewport.scrollLeft,top:viewport.scrollTop};viewport.setPointerCapture(e.pointerId);viewport.classList.add('is-panning');});
   viewport.addEventListener('pointermove',e=>{if(drag){viewport.scrollLeft=drag.left+drag.x-e.clientX;viewport.scrollTop=drag.top+drag.y-e.clientY;}});
   const stop=()=>{drag=null;viewport.classList.remove('is-panning');};viewport.addEventListener('pointerup',stop);viewport.addEventListener('pointercancel',stop);
-  host.replaceChildren(el('div',{class:'htsp-map-toolbar'},btn('＋ Nuova pagina',()=>openNew(),'button-primary'),btn('↻ Aggiorna collegamenti',()=>load(true)),search,status,el('label',{},'Radice ',root),el('label',{},focus,' Solo selezionata e collegamenti diretti'),el('label',{},trash,' Includi cestino')),
+  host.replaceChildren(el('div',{class:'htsp-map-toolbar'},btn('＋ Nuova pagina',()=>openNew(),'button-primary'),btn('↻ Aggiorna collegamenti',()=>load(true)),search,status,...filters,btn('Azzera filtri',()=>{S.search='';S.status='';S.language='';S.group='';S.category='';S.menu='';S.focus=false;search.value='';status.value='';focus.checked=false;filters.forEach(f=>f.value='');draw();}),el('label',{},'Radice ',root),el('label',{},focus,' Solo selezionata e collegamenti diretti'),el('label',{},trash,' Includi cestino')),
    el('div',{class:'htsp-map-toolbar'},btn('−',()=>zoom(S.zoom/1.2)),btn('＋',()=>zoom(S.zoom*1.2)),btn('Adatta',fit),el('span',{id:'htsp-map-zoom'},'100%'),el('span',{class:'htsp-map-legend'},'→ Direzione del link · Viola: entra nella selezionata · Corallo: esce dalla selezionata')),
    el('p',{id:'htsp-map-message',role:'status'}),el('p',{id:'htsp-map-scope',class:'htsp-map-scope'}),viewport,
    el('aside',{id:'htsp-map-drawer',class:'htsp-map-drawer',role:'dialog','aria-modal':'false','aria-labelledby':'htsp-map-drawer-title',hidden:true}));
@@ -30,25 +31,29 @@
   host.querySelectorAll('.htsp-map-toolbar button').forEach(n=>n.setAttribute('data-lock','1'));
  }
  async function load(refresh=false){
-  if(S.busy)return;setBusy(true);say('Lettura pagine e collegamenti…');
+  if(S.busy)return;if((S.dirty||S.menuDirty)&&!confirmDiscard())return;S.dirty=false;S.menuDirty=false;setBusy(true);say('Lettura pagine e collegamenti…');
   try{
    S.data=await api('list',{trash:S.trash?'1':'',refresh:refresh?'1':''});
    if(!S.root)S.root=S.data.root||S.data.nodes[0]?.id||0;
    const root=$('htsp-map-root');root.replaceChildren(...S.data.nodes.map(n=>el('option',{value:n.id,selected:Number(n.id)===S.root},n.title+' (#'+n.id+')')));
    $('htsp-map-scope').textContent=S.data.scope_note+(S.data.limited?' ATTENZIONE: limite di '+S.data.limit+' pagine raggiunto; mappa incompleta.':'')+(S.data.scope.dom_unavailable?' PHP DOM assente: lettura dei link HTML incompleta.':'')+(S.data.scope.reference_limit?' Alcuni riferimenti ricorsivi/profondi sono stati esclusi.':'');
-   draw();fit();
+   populateFilters();draw();fit();
   }catch(error){say(error.message,true);}finally{setBusy(false);}
+ }
+ function populateFilters(){
+  const choices={language:{'':'Tutte le lingue',...Object.fromEntries([...new Set(S.data.nodes.map(n=>n.language||'unknown'))].map(l=>[l,l==='unknown'?'Lingua non assegnata':l.toUpperCase()]))},group:{'':'Tutti i gruppi',...Object.fromEntries(Object.entries(S.data.groups||{}).filter(([key])=>key)),unclassified:'Non classificate'},category:{'':'Tutte le categorie',...Object.fromEntries((Array.isArray(S.data.categories)?S.data.categories:[]).map(c=>[c.slug,c.name]))},menu:{'':'Tutti i menu',none:'Senza voce di menu',...Object.fromEntries(S.data.nodes.flatMap(n=>(n.menus||[]).map(m=>[m.menu,m.menu_label])))}};
+  Object.entries(choices).forEach(([key,values])=>{$('htsp-map-'+key).replaceChildren(...Object.entries(values).map(([value,label])=>el('option',{value,selected:S[key]===value},label)));});
  }
  function visible(){
   if(!S.data)return {nodes:[],edges:[]};
-  let nodes=S.data.nodes.filter(n=>(!S.status||n.status===S.status)&&(!S.search||[n.title,n.description,String(n.id)].join(' ').toLocaleLowerCase().includes(S.search.toLocaleLowerCase())));
+  let nodes=S.data.nodes.filter(n=>(!S.language||(n.language||'unknown')===S.language)&&(!S.group||(n.group||'unclassified')===S.group)&&(!S.category||(n.categories||[]).includes(S.category))&&(!S.menu||(S.menu==='none'?!(n.menus||[]).length:(n.menus||[]).some(m=>m.menu===S.menu)))&&(!S.status||n.status===S.status)&&(!S.search||[n.title,n.slug,n.description,String(n.id)].join(' ').toLocaleLowerCase().includes(S.search.toLocaleLowerCase())));
   if(S.focus&&S.selected){const ids=new Set([S.selected]);S.data.edges.forEach(e=>{if(e.source===S.selected)ids.add(e.target);if(e.target===S.selected)ids.add(e.source);});nodes=nodes.filter(n=>ids.has(n.id));}
   const ids=new Set(nodes.map(n=>n.id));return {nodes,edges:S.data.edges.filter(e=>ids.has(e.source)&&ids.has(e.target))};
  }
  function svg(tag,attrs){const n=document.createElementNS('http://www.w3.org/2000/svg',tag);Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,String(v)));return n;}
  let observer=null;
  function draw(){
-  if(!S.data)return;const view=visible(),canvas=$('htsp-map-canvas');S.positions=L.compute(view.nodes,view.edges,S.root);
+  if(!S.data)return;if(host.querySelector('.is-editing')&&(S.dirty||S.menuDirty)){if(!confirmDiscard())return;S.dirty=false;S.menuDirty=false;}const view=visible(),canvas=$('htsp-map-canvas');S.positions=L.compute(view.nodes,view.edges,S.root);
   if(observer)observer.disconnect();observer=new IntersectionObserver(entries=>{entries.forEach(entry=>{if(entry.isIntersecting){const frame=entry.target;frame.src=frame.dataset.src;observer.unobserve(frame);}});},{root:$('htsp-map-viewport'),rootMargin:'180px'});
   const lines=svg('svg',{class:'htsp-map-lines',width:S.positions.width+80,height:S.positions.height,'aria-hidden':'true'}),defs=svg('defs',{});
   for(const [name,color] of [['normal','#a7a0b4'],['in','#4b286d'],['out','#c13f3e']]){const marker=svg('marker',{id:'htsp-arrow-'+name,viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:7,markerHeight:7,orient:'auto'});marker.append(svg('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:color}));defs.append(marker);}lines.append(defs);
@@ -59,8 +64,8 @@
    const viewport=el('div',{class:'htsp-map-thumb'});
    if(node.image)viewport.append(el('img',{src:node.image,alt:'',loading:'lazy'}));
    if(node.preview_url){const frame=el('iframe',{'data-src':node.preview_url,title:'',tabIndex:-1,'aria-hidden':'true',sandbox:'allow-same-origin',referrerPolicy:'same-origin'});viewport.append(frame);observer.observe(frame);}else viewport.append(el('span',{class:'htsp-map-no-preview'},'Pagina nel cestino'));
-   const caption=el('figcaption',{},node.description||node.title);const button=el('button',{type:'button',class:'htsp-map-node-open','aria-label':'Proprietà di '+node.title+' (#'+node.id+')',title:node.title+' · '+node.status,onclick:()=>openPage(node.id)});
-   const actions=el('div',{class:'htsp-map-node-actions'},btn('Sequenza blocchi',()=>openStructure(node.id,'blocks')),btn('Percorsi ipotizzati',()=>openStructure(node.id,'paths')));
+   const caption=el('figcaption',{},el('strong',{},node.title),el('small',{},'/'+(node.slug||'')+' · '+(node.language||'?').toUpperCase()+' · '+(S.data.groups?.[node.group]||'Non classificata')));const button=el('button',{type:'button',class:'htsp-map-node-open','aria-label':'Proprietà di '+node.title+' (#'+node.id+')',title:node.title+' · '+node.status,onclick:()=>openPage(node.id)});
+   const actions=el('div',{class:'htsp-map-node-actions'},btn('Modifica qui',()=>openInline(node.id)),btn('Sequenza blocchi',()=>openStructure(node.id,'blocks')),btn('Percorsi ipotizzati',()=>openStructure(node.id,'paths')));
    const c=node.link_counts||{in:0,post:0,page:0,ext:0};
    const metrics=el('div',{class:'htsp-map-metrics'+(c.in===0?' has-zero-in':'')},
      ...[['IN',c.in],['POST',c.post],['PAGE',c.page],['EXT',c.ext]].map(([label,value])=>el('span',{title:label+' · link editoriali'},el('b',{},String(value)),el('small',{},label))));
@@ -73,16 +78,67 @@
  function applyScale(){if(!S.positions)return;$('htsp-map-canvas').style.transform='scale('+S.zoom+')';$('htsp-map-space').style.width=(S.positions.width+80)*S.zoom+'px';$('htsp-map-space').style.height=S.positions.height*S.zoom+'px';$('htsp-map-zoom').textContent=Math.round(S.zoom*100)+'%';}
  function zoom(value){S.zoom=Math.max(.15,Math.min(2,value));applyScale();}
  function fit(){if(!S.positions)return;const width=$('htsp-map-viewport').clientWidth||1000;zoom(Math.min(1,(width-30)/(S.positions.width+80)));$('htsp-map-viewport').scrollTop=0;}
+
+ async function openInline(id){
+  if(S.busy||!confirmDiscard())return;setBusy(true);
+  try{const m=await api('page',{id});S.model=m;S.selected=id;S.panelMode='properties';S.dirty=false;S.menuDirty=false;draw();$('htsp-map-drawer').hidden=true;$('htsp-map-drawer').replaceChildren();
+   const node=host.querySelector('[data-page-id="'+id+'"]');node.classList.add('is-editing');if(S.zoom<.85)zoom(.85);
+   const fields=el('fieldset',{id:'htsp-map-fields'},formField('post_title',m.fields.post_title),formField('post_name',m.fields.post_name),formField('page_group',m.fields.page_group||'',{choices:m.groups||{'':'Non classificata'}}));
+   if(m.languages.length)fields.append(formField('language',m.fields.language,{choices:{'':'Scegli lingua',...Object.fromEntries(m.languages.map(l=>[l,l.toUpperCase()]))}}));
+   Object.entries(m.taxonomies).filter(([name])=>!['language','post_translations','term_language','term_translations'].includes(name)).forEach(([name,t])=>{
+    const field=formField('tax:'+name,t.value,{label:t.label,help:'Slug delle categorie esistenti, separati da virgole.'});field.querySelector('input').disabled=!t.editable;fields.append(field);
+   });
+   const save=btn('Salva dati pagina',async()=>{
+    if(S.busy)return;if(S.menuDirty){window.alert('Salva prima la voce di menu modificata, oppure chiudi per scartare le modifiche.');return;}const changed={},tax={};fields.querySelectorAll('[data-field]').forEach(input=>{if(input.disabled)return;const key=input.dataset.field;if(key.startsWith('tax:')){if(input.value!==m.taxonomies[key.slice(4)].value)tax[key.slice(4)]=input.value;}else if(input.value!==(m.fields[key]||''))changed[key]=input.value;});
+    if(!Object.keys(changed).length&&!Object.keys(tax).length)return;
+    setBusy(true);try{await api('write',{payload:JSON.stringify({id,token:m.token,fields:changed,tax,meta:{}})});S.dirty=false;S.menuDirty=false;setBusy(false);await load(true);await openInline(id);}catch(e){say(e.message,true);}finally{setBusy(false);}
+   },'button-primary');
+   const close=btn('Chiudi',()=>{if(!S.busy&&confirmDiscard()){S.dirty=false;S.menuDirty=false;draw();}});
+   node.replaceChildren(el('h3',{},'Modifica pagina #'+id),el('p',{id:'htsp-map-edit-state',role:'status'},'Le modifiche si salvano con i pulsanti qui sotto.'),fields,save,close);
+   if(m.node.status==='trash'){fields.disabled=true;save.disabled=true;save.dataset.permanentDisabled='1';}
+   const categoryInput=fields.querySelector('[data-field="tax:htsp_page_category"]');
+   if(categoryInput){const known=el('select',{'aria-label':'Aggiungi categoria esistente'},el('option',{value:''},'Aggiungi categoria…'),...(S.data.categories||[]).map(t=>el('option',{value:t.slug},t.name)));known.addEventListener('change',()=>{if(!known.value)return;categoryInput.value=[...new Set([...categoryInput.value.split(',').map(x=>x.trim()).filter(Boolean),known.value])].join(', ');markDirty();known.value='';});fields.append(known);}
+   node.append(btn('＋ Crea categoria',async()=>{if(S.busy)return;if(S.dirty||S.menuDirty){window.alert('Salva prima le modifiche in corso.');return;}const name=window.prompt('Nome della nuova categoria delle pagine:');if(!name)return;setBusy(true);try{await api('category',{name});setBusy(false);await load(true);await openInline(id);}catch(e){say(e.message,true);}finally{setBusy(false);}}));
+   if(m.menus)renderMenus(node,m);
+   node.querySelector('input')?.focus();node.scrollIntoView?.({block:'nearest',inline:'nearest'});
+  }catch(e){say(e.message,true);}finally{setBusy(false);}
+ }
+ function renderMenus(node,m){
+  const area=el('section',{class:'htsp-inline-menus'},el('h4',{},'Voci di menu che richiamano questa pagina'));
+  const data=m.menus;
+  async function apply(menu,item,label,parent,remove=false){
+   if(S.busy)return;
+   // Unsaved page fields and menu edits have independent save operations.
+   setBusy(true);try{await api('menus',{payload:JSON.stringify({id:m.node.id,token:data.token,menu:menu.key,item:item?.key||'',label,parent,remove})});S.dirty=false;S.menuDirty=false;setBusy(false);await load(true);await openInline(m.node.id);}catch(e){say(e.message,true);}finally{setBusy(false);}
+  }
+  function row(menu,item){
+   const label=el('input',{value:item?.label||m.node.title,'aria-label':'Etichetta nel menu '+menu.label}),parent=el('select',{'aria-label':'Voce superiore nel menu '+menu.label},el('option',{value:'0'},'Livello principale'));
+   const descendants=new Set(item?[item.key]:[]);let size;do{size=descendants.size;menu.items.forEach(i=>{if(descendants.has(i.parent))descendants.add(i.key);});}while(size!==descendants.size);
+   menu.items.filter(i=>!descendants.has(i.key)&&(menu.kind==='classic'||menu.items.some(c=>c.parent===i.key))).forEach(i=>parent.append(el('option',{value:i.key,selected:item?.parent===i.key},i.label+' (#'+i.key+')')));
+   // Empty navigation submenus are also valid parents (marked by the server).
+   menu.items.filter(i=>i.submenu&&!descendants.has(i.key)&&!parent.querySelector('option[value="'+i.key+'"]')).forEach(i=>parent.append(el('option',{value:i.key,selected:item?.parent===i.key},i.label)));
+   const editing=()=>{S.menuDirty=true;const fields=$('htsp-map-fields');if(fields)fields.disabled=true;area.querySelectorAll('input,select,button').forEach(c=>{if(!controls.contains(c))c.disabled=true;});};label.addEventListener('input',editing);parent.addEventListener('change',editing);
+   const controls=el('div',{class:'htsp-menu-row'},el('strong',{},menu.label+(menu.kind==='block'?' · blocchi':'')),label,parent,btn(item?'Salva voce':'Aggiungi voce',()=>{if(S.dirty){window.alert('Salva o chiudi prima le modifiche ai dati della pagina.');return;}apply(menu,item,label.value,parent.value);}));
+   if(item)controls.append(btn('Rimuovi voce',()=>{if(S.dirty){window.alert('Salva prima i dati della pagina.');return;}if(window.confirm('Rimuovere soltanto questa voce dal menu? La pagina resta disponibile.'))apply(menu,item,label.value,parent.value,true);}));
+   if(!data.can_edit)controls.querySelectorAll('input,select,button').forEach(c=>c.disabled=true);
+   return controls;
+  }
+  data.menus.forEach(menu=>menu.items.filter(i=>i.current).forEach(item=>area.append(row(menu,item))));
+  if(data.can_edit){const selector=el('select',{'aria-label':'Menu a cui aggiungere la pagina'},el('option',{value:''},'Aggiungi a un menu…'),...data.menus.map(menu=>el('option',{value:menu.key},menu.label)));const add=el('div',{});selector.addEventListener('change',()=>{add.replaceChildren();const menu=data.menus.find(x=>x.key===selector.value);if(menu)add.append(row(menu,null));});area.append(selector,add);}
+  if(!data.menus.length)area.append(el('p',{},'Nessun menu WordPress disponibile. I menu generati da plugin richiedono il relativo editor.'));
+  node.append(area);
+ }
+
  async function openPage(id){
   if(S.busy||!confirmDiscard())return;setBusy(true);
-  try{const model=await api('page',{id});S.selected=Number(id);S.model=model;S.panelMode='properties';S.dirty=false;draw();renderDrawer();}
+  try{const model=await api('page',{id});S.selected=Number(id);S.model=model;S.panelMode='properties';S.dirty=false;S.menuDirty=false;draw();renderDrawer();}
   catch(error){say(error.message,true);}finally{setBusy(false);}
  }
  function openNew(){
   if(S.busy||!confirmDiscard())return;S.panelMode='properties';S.selected=0;S.model={node:{id:0,title:'Nuova pagina',status:'draft'},fields:{post_title:'',post_name:'',post_status:'draft',post_excerpt:'',map_description:'',post_content:'',post_parent:'0',menu_order:'0',comment_status:'closed',ping_status:'closed'},system:{},meta:{},taxonomies:{},templates:{default:'Predefinito'},languages:[],authors:[],can_publish:S.data.permissions?.publish??false,can_author:false};S.dirty=false;draw();renderDrawer();
  }
  function closeDrawer(){if(S.busy||!confirmDiscard())return;S.dirty=false;$('htsp-map-drawer').hidden=true;const button=host.querySelector('[data-page-id="'+S.selected+'"] button');if(button)button.focus();}
- function markDirty(){S.dirty=true;const state=$('htsp-map-edit-state');if(state)state.textContent='Modifiche non salvate.';}
+ function markDirty(){S.dirty=true;host.querySelectorAll('.is-editing .htsp-inline-menus input,.is-editing .htsp-inline-menus select,.is-editing .htsp-inline-menus button').forEach(n=>n.disabled=true);const state=$('htsp-map-edit-state');if(state)state.textContent='Modifiche non salvate.';}
  function formField(key,value,options={}){
   let control;
   if(options.choices){control=el('select',{'data-field':key},...Object.entries(options.choices).map(([v,text])=>el('option',{value:v,selected:String(v)===String(value)},text)));}
@@ -98,7 +154,7 @@
   const statuses={draft:'Bozza',pending:'In revisione',publish:'Pubblicata',private:'Privata',future:'Programmata'};
   if(m.node.status==='trash'){statuses.trash='Nel cestino';}
   if(!m.can_publish){delete statuses.publish;delete statuses.private;delete statuses.future;if(m.fields.post_status)statuses[m.fields.post_status]=m.fields.post_status;}
-  const basic=detail('Proprietà della pagina',formField('post_title',m.fields.post_title),formField('map_description',m.fields.map_description,{multiline:true,help:'Un solo testo sotto la miniatura. Se vuoto viene usato il riassunto o il titolo.'}),formField('post_name',m.fields.post_name),formField('post_status',m.fields.post_status,{choices:statuses}),formField('post_excerpt',m.fields.post_excerpt,{multiline:true}),formField('post_parent',m.fields.post_parent,{type:'number',help:'Gerarchia WordPress: non aggiunge né rimuove le frecce dei collegamenti.'}),formField('menu_order',m.fields.menu_order,{type:'number'}));
+  const basic=detail('Proprietà della pagina',formField('post_title',m.fields.post_title),formField('map_description',m.fields.map_description,{multiline:true,help:'Un solo testo sotto la miniatura. Se vuoto viene usato il riassunto o il titolo.'}),formField('post_name',m.fields.post_name),formField('page_group',m.fields.page_group||'',{choices:m.groups||{'':'Non classificata'}}),formField('post_status',m.fields.post_status,{choices:statuses}),formField('post_excerpt',m.fields.post_excerpt,{multiline:true}),formField('post_parent',m.fields.post_parent,{type:'number',help:'Gerarchia WordPress: non aggiunge né rimuove le frecce dei collegamenti.'}),formField('menu_order',m.fields.menu_order,{type:'number'}));
   if(!creating){
    basic.append(formField('post_author',m.fields.post_author,{choices:{[m.fields.post_author]:'Autore #'+m.fields.post_author,...Object.fromEntries(m.authors.map(a=>[a.id,a.name+' (#'+a.id+')']))}}));basic.querySelector('[data-field="post_author"]').disabled=!m.can_author;
    basic.append(formField('post_date',m.fields.post_date),formField('post_date_gmt',m.fields.post_date_gmt));
@@ -201,6 +257,6 @@
   try{const result=await api(restore?'restore':'trash',{payload:JSON.stringify({id:m.node.id,token:m.token})});S.dirty=false;$('htsp-map-drawer').hidden=true;setBusy(false);await load(true);say(result.message);}
   catch(error){$('htsp-map-edit-state').textContent=error.message;say(error.message,true);}finally{setBusy(false);}
  }
- window.addEventListener('beforeunload',e=>{if(S.dirty||S.busy){e.preventDefault();e.returnValue='';}});
+ window.addEventListener('beforeunload',e=>{if(S.dirty||S.menuDirty||S.busy){e.preventDefault();e.returnValue='';}});
  shell();load();
 })();
